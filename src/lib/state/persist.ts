@@ -24,6 +24,8 @@ function parseLevel(v: unknown): Level {
     allowBehind: o.allowBehind === true,
     maxLoadKg: numOrNull(o.maxLoadKg),
     boxIds: Array.isArray(o.boxIds) ? o.boxIds.filter((x): x is string => typeof x === 'string') : null,
+    topWidth: numOrNull(o.topWidth) != null ? Math.max(0, o.topWidth as number) : null,
+    sideOverhang: Math.max(0, num(o.sideOverhang, 0)),
   };
 }
 

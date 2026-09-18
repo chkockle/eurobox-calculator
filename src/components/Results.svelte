@@ -6,6 +6,8 @@
   import { basePlan as findBase, effectivePlan, solveShelf, suggestions, TIGHT_MM, type Plan } from '../lib/solver/plans';
   import type { LevelCandidate } from '../lib/solver/level';
   import { placeBoxes, shelfOffsets } from '../lib/solver/geometry';
+  import { levelCopies, levelWidth } from '../lib/model/shelfGen';
+  import { mergeRackTops } from '../lib/model/rack';
   import { boxColor, boxName, candidateSummary } from '../lib/display';
   import type { SceneShelf } from './ShelfScene.svelte';
   import ShoppingList, { type ShoppingTotals } from './ShoppingList.svelte';
@@ -17,14 +19,15 @@
   const settings = $derived($state.snapshot(app.project.settings) as Project['settings']);
   const prices = $derived($state.snapshot(app.project.prices) as Record<string, number>);
 
+  const shelfName = (s: Shelf, i: number) => s.name || t('shelf.defaultName', { n: i + 1 });
+
   // Solve every shelf (≈10 ms each). Manual choices are applied on top, so they don't re-solve.
   const solved = $derived.by(() => {
     const enabled = new Set(app.project.enabledBoxIds);
     const boxes = $state.snapshot(catalog.filter((b) => enabled.has(b.id)));
-    return app.project.shelves.map((s) => {
-      const shelf = $state.snapshot(s) as Shelf;
-      return { shelf, solution: solveShelf(shelf, boxes, { prices, settings }) };
-    });
+    // Attached bays with tops at the same height share one continuous top surface.
+    const shelves = mergeRackTops($state.snapshot(app.project.shelves) as Shelf[], shelfName);
+    return shelves.map((shelf) => ({ shelf, solution: solveShelf(shelf, boxes, { prices, settings }) }));
   });
 
   const computed = $derived(
@@ -109,8 +112,6 @@
     };
   }
 
-  const shelfName = (s: Shelf, i: number) => s.name || t('shelf.defaultName', { n: i + 1 });
-
   const allTotals = $derived(totalsOf(computed.map((c) => c.plan)));
   const totals = $derived(scope === 'all' ? allTotals : totalsOf([plan]));
   const perShelf = $derived(
@@ -185,6 +186,8 @@
       out.push([t('level.spareHeight', { mm: fmt(c.spareHeight + (level.openTop ? 0 : settings.topClearance)) }), c.spareHeight < TIGHT_MM ? 'warn' : '']);
     }
     if (c.overhang > 0) out.push([t('level.overhang', { mm: fmt(c.overhang) }), 'warn']);
+    if (c.sideOverhang > 0) out.push([t('level.sideOverhang', { mm: fmt(c.sideOverhang) }), 'warn']);
+    if (level.openTop && (shelf!.bays > 1 || shelf!.topSpanWidth)) out.push([t('level.topAcrossBays', { mm: fmt(levelWidth(shelf!, level)) }), '']);
     if (c.columns.some((col) => col.rows > 1 || col.stack > 1)) out.push([t('badge.hidden'), '']);
     if (c.columns.some((col) => col.stackLimited)) out.push([t('level.stackLimited', { n: level.maxStack ?? 1 }), 'warn']);
     if (lp?.loadKg != null) {
@@ -199,17 +202,17 @@
   const levelOrder = $derived(shelf ? shelf.levels.map((_, i) => i).reverse() : []);
 </script>
 
-{#snippet topView(c: LevelCandidate)}
-  {@const W = shelf!.clearWidth}
+{#snippet topView(c: LevelCandidate, W: number)}
   {@const D = shelf!.clearDepth}
   {@const over = c.overhang}
   {@const n = c.columns.length}
   {@const used = c.columns.reduce((s, col) => s + col.w, 0) + Math.max(0, n - 1) * settings.gap}
   {@const spread = Math.max(0, (W - used) / (n + 1))}
-  <svg class="top-view" viewBox={`-10 -10 ${W + 20} ${D + over + 20}`} role="img" aria-label={candidateSummary(c, byId)}>
+  {@const side = c.sideOverhang}
+  <svg class="top-view" viewBox={`${-10 - side} -10 ${W + 20 + 2 * side} ${D + over + 20}`} role="img" aria-label={candidateSummary(c, byId)}>
     <rect x="0" y="0" width={W} height={D} class="board" />
     {#each c.columns as col, ci (ci)}
-      {@const x = spread + c.columns.slice(0, ci).reduce((s, cc) => s + cc.w + settings.gap + spread, 0) + settings.tolerance / 2}
+      {@const x = spread - side + c.columns.slice(0, ci).reduce((s, cc) => s + cc.w + settings.gap + spread, 0) + settings.tolerance / 2}
       {@const depthUsed = col.rows * col.d + (col.rows - 1) * col.rowGap}
       {@const shift = Math.max(0, depthUsed - D)}
       {#each { length: col.rows } as _, r (r)}
@@ -360,9 +363,11 @@
                   {#if hasWarn}<span class="dot" title={facts.filter(([, tone]) => tone).map(([x]) => x).join(', ')}></span>{/if}
                   {#if selection?.overrides[level.id] !== undefined}<span class="badge">{t('plan.custom')}</span>{/if}
                 </span>
-                <span class="num">{c ? `${fmt(c.volume * shelf.bays)} L` : ''}</span>
+                <span class="num">{c ? `${fmt(c.volume * levelCopies(shelf, level))} L` : ''}</span>
                 <span class="level-line">
-                  {#if !level.enabled}
+                  {#if level.mergedInto}
+                    {t('level.mergedInto', { name: level.mergedInto })}
+                  {:else if !level.enabled}
                     {t('level.disabled')}
                   {:else if !result?.candidates.length}
                     {t('level.nothingFits')}
@@ -401,7 +406,7 @@
                       </small>
                     {/if}
                   </div>
-                  {#if c}{@render topView(c)}{/if}
+                  {#if c}{@render topView(c, levelWidth(shelf, level))}{/if}
                 </div>
               {/if}
             </details>

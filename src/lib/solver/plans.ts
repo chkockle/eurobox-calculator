@@ -135,13 +135,14 @@ export function buildPlan(
 
   const levels: LevelPlan[] = shelf.levels.map((l, i) => {
     const c = picks[i] ?? null;
+    const copies = l.openTop ? 1 : bays; // the top of the shelf is one surface
     let loadKg: number | null = null;
     if (c) {
-      volume += c.volume * bays;
+      volume += c.volume * copies;
       for (const col of c.columns) {
-        for (const it of col.items) counts.set(it.boxId, (counts.get(it.boxId) ?? 0) + col.rows * bays);
+        for (const it of col.items) counts.set(it.boxId, (counts.get(it.boxId) ?? 0) + col.rows * copies);
       }
-      if (c.overhang > 0) overhang = true;
+      if (c.overhang > 0 || c.sideOverhang > 0) overhang = true;
       minSpare = Math.min(minSpare, c.spareWidth, c.spareHeight, c.spareDepth);
       if (settings.kgPerLitre != null) loadKg = c.volume * settings.kgPerLitre;
     }

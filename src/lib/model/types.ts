@@ -39,6 +39,15 @@ export interface Level {
   maxLoadKg: number | null;
   /** Only these boxes on this level (e.g. small boxes for small parts). null = all selected boxes. */
   boxIds: string[] | null;
+  /**
+   * Top of shelf only: usable width. null = the shelf's full outer width — on top, the uprights
+   * don't split the bays, so it is one continuous surface.
+   */
+  topWidth: number | null;
+  /** Top of shelf only: how far boxes may stick out on the left and right (mm per side). */
+  sideOverhang: number;
+  /** Derived, not saved: this top is part of the continuous top of the named bay to the left. */
+  mergedInto?: string;
 }
 
 export interface Shelf {
@@ -64,6 +73,8 @@ export interface Shelf {
   boxIds: string[] | null;
   /** Built onto the previous shelf in the list, sharing its upright (e.g. separately configured bays). */
   joined: boolean;
+  /** Derived, not saved: the top surface starts at this shelf and spans this width (attached bays). */
+  topSpanWidth?: number;
 }
 
 export interface Settings {

@@ -1,4 +1,4 @@
-import { levelBaseHeights } from '../model/shelfGen';
+import { levelBaseHeights, levelWidth, shelfOuterWidth, topSpan } from '../model/shelfGen';
 import type { Settings, Shelf } from '../model/types';
 import type { Plan } from './plans';
 
@@ -29,9 +29,7 @@ export function bayLeft(shelf: Shelf, bay: number): number {
   return shelf.uprightSize + bay * (shelf.clearWidth + shelf.uprightSize);
 }
 
-export function shelfOuterWidth(shelf: Shelf): number {
-  return bayLeft(shelf, shelf.bays);
-}
+export { shelfOuterWidth };
 
 /**
  * Left edge (mm) of each shelf when shown side by side: attached shelves share the upright
@@ -61,14 +59,22 @@ export function placeBoxes(shelf: Shelf, plan: Plan, settings: Settings): Placed
   plan.levels.forEach((lp, li) => {
     const c = lp.candidate;
     if (!c || !c.columns.length) return;
+    const level = shelf.levels[li];
+    const top = level?.openTop ?? false;
+    const width = top ? levelWidth(shelf, level) : W;
     const n = c.columns.length;
     const used = c.columns.reduce((s, col) => s + col.w, 0) + (n - 1) * gap;
     // Spread the spare width evenly: to the left, between columns and to the right.
-    const spread = Math.max(0, (W - used) / (n + 1));
+    const spread = Math.max(0, (width - used) / (n + 1));
+    // The top is one surface centred on the shelf; boxes may stick out equally on both sides.
+    const starts = top
+      ? [(topSpan(shelf) - width) / 2 - Math.max(0, used - width) / 2]
+      : Array.from({ length: Math.max(1, shelf.bays) }, (_, bay) => bayLeft(shelf, bay));
 
-    for (let bay = 0; bay < Math.max(1, shelf.bays); bay++) {
-      let x = bayLeft(shelf, bay) + spread;
-      for (const col of c.columns) {
+    starts.forEach((start, bay) => {
+      let x = start + spread;
+      c.columns.forEach((col, ci) => {
+        const sideOut = c.sideOverhang > 0 && (ci === 0 || ci === n - 1);
         const depthUsed = col.rows * col.d + (col.rows - 1) * col.rowGap;
         const shift = Math.max(0, depthUsed - D);
         for (let r = 0; r < col.rows; r++) {
@@ -86,7 +92,7 @@ export function placeBoxes(shelf: Shelf, plan: Plan, settings: Settings): Placed
               d: col.nomD,
               h: it.nomH,
               lid: it.lid,
-              overhang: r === 0 && shift > 0,
+              overhang: (r === 0 && shift > 0) || sideOut,
               hidden: r > 0 || s < col.stack - 1,
               row: r,
               tier: s,
@@ -95,8 +101,8 @@ export function placeBoxes(shelf: Shelf, plan: Plan, settings: Settings): Placed
           });
         }
         x += col.w + gap + spread;
-      }
-    }
+      });
+    });
   });
   return out;
 }

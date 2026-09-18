@@ -83,6 +83,8 @@ export function makeLevel(clearHeight: number | null, openTop = false): Level {
     allowBehind: false,
     maxLoadKg: null,
     boxIds: null,
+    topWidth: null,
+    sideOverhang: 0,
   };
 }
 
@@ -113,6 +115,26 @@ export function shelfFromQuick(q: QuickShelfInput): Shelf {
     boxIds: null,
     joined: false,
   };
+}
+
+/** Outer width of a shelf: all bays plus their uprights. */
+export function shelfOuterWidth(shelf: Shelf): number {
+  return shelf.uprightSize + Math.max(1, shelf.bays) * (shelf.clearWidth + shelf.uprightSize);
+}
+
+/** Width boxes can use on a level: one bay between the uprights, or on top the whole surface. */
+export function levelWidth(shelf: Shelf, level: Level): number {
+  return level.openTop ? (level.topWidth ?? topSpan(shelf)) : shelf.clearWidth;
+}
+
+/** Width of the shelf's top surface, measured from its left edge (wider for attached bays). */
+export function topSpan(shelf: Shelf): number {
+  return shelf.topSpanWidth ?? shelfOuterWidth(shelf);
+}
+
+/** How often a level's layout repeats: once per bay, except the continuous top of the shelf. */
+export function levelCopies(shelf: Shelf, level: Level): number {
+  return level.openTop ? 1 : Math.max(1, shelf.bays);
 }
 
 /** Height of each level's board surface above the floor (for rendering). */

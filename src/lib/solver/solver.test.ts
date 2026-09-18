@@ -5,6 +5,7 @@ import { PRESETS, makeLevel, shelfFromQuick } from '../model/shelfGen';
 import type { BoxType, Settings, Shelf } from '../model/types';
 import { parseProject, projectFromHash, shareHash } from '../state/persist';
 import { parseDecimal } from '../format';
+import { bayHeightDifference, mergeRackTops } from '../model/rack';
 import { placeBoxes, shelfOffsets, shelfOuterWidth } from './geometry';
 import { bestMixedStack, columnOptions, fillWidth, levelSpace, solveLevel, type LevelSpace } from './level';
 import { basePlan, effectivePlan, rankPlans, solveShelf, suggestions } from './plans';
@@ -18,7 +19,7 @@ const box = (id: string): BoxType => {
 const S: Settings = { ...DEFAULT_SETTINGS, tolerance: 0, gap: 0, topClearance: 0 };
 
 const space = (over: Partial<LevelSpace> = {}): LevelSpace => ({
-  width: 1200, depth: 400, height: 400, frontOverhang: 0, maxStack: 1, allowBehind: false, needsClearance: true, ...over,
+  width: 1200, depth: 400, height: 400, frontOverhang: 0, sideOverhang: 0, maxStack: 1, allowBehind: false, needsClearance: true, ...over,
 });
 
 describe('columnOptions', () => {
@@ -253,6 +254,64 @@ describe('solveShelf on the OBI preset', () => {
     const ranked = rankPlans(sol.plans, 'value');
     expect(ranked[0].costPerLitre).not.toBeNull();
     expect(ranked[0].boxes.every((b) => b.price != null)).toBe(true);
+  });
+});
+
+describe('top of shelf', () => {
+  const twoBays = { ...shelfFromQuick({ ...PRESETS[0].input, bays: 2 }), levels: [makeLevel(400), makeLevel(null, true)] };
+  const boxes = [box('euro-600x400x320')];
+  const settings = { ...S, gap: 10, tolerance: 5 };
+
+  it('is one surface across all bays, counted once', () => {
+    // Outer width 1600: bays are 740 each (two 60×40 lengthwise need 1220 → only one per bay).
+    const sol = solveShelf(twoBays, boxes, { prices: {}, settings });
+    const plan = basePlan(sol, 'maxVolume')!;
+    expect(twoBays.clearWidth).toBe(740);
+    expect(plan.levels[0].candidate!.count).toBe(1); // per bay …
+    // … but 3 turned (405 wide) across the continuous 1600 mm top: 3 × 405 + 2 × 10 = 1235
+    expect(plan.levels[1].candidate!.count).toBe(3);
+    expect(plan.count).toBe(2 * 1 + 3);
+  });
+
+  it('lets boxes stick out at the sides within the support rule', () => {
+    const narrow = { ...twoBays, levels: [{ ...makeLevel(null, true), topWidth: 1150 }] };
+    const without = solveLevel(levelSpace(narrow, narrow.levels[0]), boxes, settings).candidates[0];
+    const withSide = solveLevel(levelSpace(narrow, { ...narrow.levels[0], sideOverhang: 50 }), boxes, settings).candidates[0];
+    expect(without.volume).toBeLessThan(withSide.volume);
+    expect(withSide.sideOverhang).toBeGreaterThan(0);
+    expect(withSide.sideOverhang).toBeLessThanOrEqual(50);
+  });
+
+  it('places top boxes centred over the whole shelf', () => {
+    const sol = solveShelf(twoBays, boxes, { prices: {}, settings });
+    const plan = basePlan(sol, 'maxVolume')!;
+    const top = placeBoxes(twoBays, plan, settings).filter((p) => p.levelIndex === 1);
+    const left = Math.min(...top.map((p) => p.x));
+    const right = Math.max(...top.map((p) => p.x + p.w));
+    expect(Math.abs(left - (shelfOuterWidth(twoBays) - right))).toBeLessThan(10);
+  });
+});
+
+describe('mergeRackTops', () => {
+  const bay = { ...shelfFromQuick({ ...PRESETS[1].input }), levels: [makeLevel(350), makeLevel(null, true)] };
+  const name = (_: Shelf, i: number) => `bay ${i + 1}`;
+
+  it('joins the tops of attached bays at the same height into one surface', () => {
+    const merged = mergeRackTops([bay, { ...bay, id: 'b2', joined: true }], name);
+    expect(merged[0].topSpanWidth).toBe(2 * shelfOuterWidth(bay) - bay.uprightSize);
+    expect(merged[1].levels[1]).toMatchObject({ enabled: false, mergedInto: 'bay 1' });
+    const sol = solveShelf(merged[0], [box('euro-600x400x320')], { prices: {}, settings: S });
+    expect(basePlan(sol, 'maxVolume')!.levels[1].candidate!.spareWidth).toBeGreaterThan(sol.levels[0]!.candidates[0].spareWidth);
+  });
+
+  it('never joins separate shelves, nor bays whose tops are at different heights', () => {
+    expect(mergeRackTops([bay, { ...bay, id: 'b2', joined: false }], name)[0].topSpanWidth).toBeUndefined();
+    const taller = { ...bay, id: 'b3', joined: true, levels: [makeLevel(450), makeLevel(null, true)] };
+    const merged = mergeRackTops([bay, taller], name);
+    expect(merged[0].topSpanWidth).toBeUndefined();
+    expect(merged[1].levels[1].enabled).toBe(true);
+    expect(bayHeightDifference([bay, taller], 1)).toBe(100);
+    expect(bayHeightDifference([bay, { ...bay, joined: true }], 1)).toBe(0);
   });
 });
 

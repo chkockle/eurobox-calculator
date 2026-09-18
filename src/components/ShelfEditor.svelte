@@ -1,12 +1,13 @@
 <script lang="ts">
   import { t } from '../lib/i18n/index.svelte';
   import { app } from '../lib/state/app.svelte';
-  import { PRESETS, makeLevel, shelfFromQuick, uid, type QuickShelfInput } from '../lib/model/shelfGen';
+  import { PRESETS, makeLevel, shelfFromQuick, shelfOuterWidth, uid, type QuickShelfInput } from '../lib/model/shelfGen';
   import { allBoxes } from '../lib/model/catalog';
   import type { Level } from '../lib/model/types';
   import NumField from './NumField.svelte';
   import MeasureGuide from './MeasureGuide.svelte';
   import BoxFilter from './BoxFilter.svelte';
+  import { bayHeightDifference, mergeRackTops } from '../lib/model/rack';
 
   const shelves = $derived(app.project.shelves);
   const shelf = $derived(shelves[app.activeShelf]);
@@ -109,8 +110,17 @@
     if (l.allowBehind) out.push(t('levels.xBehind'));
     if (l.maxLoadKg != null) out.push(t('levels.xLoad', { kg: l.maxLoadKg }));
     if (l.boxIds) out.push(t('levels.xBoxes', { n: l.boxIds.length }));
+    if (l.openTop && l.topWidth != null) out.push(t('levels.xTopWidth', { mm: l.topWidth }));
+    if (l.openTop && l.sideOverhang > 0) out.push(t('levels.xSide', { mm: l.sideOverhang }));
     return out;
   }
+
+  // Which tops are merged into a bay to the left (same logic as the results).
+  const merged = $derived(
+    mergeRackTops($state.snapshot(shelves) as typeof shelves, (s, i) => s.name || t('shelf.defaultName', { n: i + 1 }))[app.activeShelf],
+  );
+
+  const heightDiff = $derived(bayHeightDifference($state.snapshot(shelves) as typeof shelves, app.activeShelf));
 
   const levelOrder = $derived(shelf ? shelf.levels.map((_, i) => i).reverse() : []);
 </script>
@@ -188,6 +198,9 @@
       {#if app.activeShelf > 0}
         <label class="row"><input type="checkbox" bind:checked={shelf.joined} /> {t('shelf.joined')}</label>
       {/if}
+      {#if Math.abs(heightDiff) > 5}
+        <small class="warn-text">{t('shelf.bayHeightDiff', { mm: Math.round(Math.abs(heightDiff)), dir: heightDiff > 0 ? t('shelf.higher') : t('shelf.lower') })}</small>
+      {/if}
     </div>
 
     <div class="stack">
@@ -222,6 +235,9 @@
               {/if}
               <button class="icon remove" title={t('levels.remove')} aria-label={t('levels.remove')} onclick={() => removeLevel(i)}>✕</button>
             </div>
+            {#if merged?.levels[i]?.mergedInto}
+              <small class="muted">{t('level.mergedInto', { name: merged.levels[i].mergedInto! })}</small>
+            {/if}
             <details class="more">
               <summary>
                 {t('levels.more')}{#if extras.length}: <span class="extras">{extras.join(' · ')}</span>{/if}
@@ -229,6 +245,10 @@
               <div class="level-fields">
                 <NumField label={t('levels.stack')} nullable placeholder={t('levels.noLimit')} bind:value={level.maxStack} min={1} max={20} hint={level.openTop && level.clearHeight == null ? t('levels.stackHintTop') : t('levels.stackHint')} />
                 <NumField label={t('levels.maxLoad')} unit="kg" nullable bind:value={level.maxLoadKg} />
+                {#if level.openTop}
+                  <NumField label={t('levels.topWidth')} unit="mm" nullable placeholder={String(shelfOuterWidth(shelf))} hint={t('levels.topWidthHint')} bind:value={level.topWidth} />
+                  <NumField label={t('levels.sideOverhang')} unit="mm" hint={t('levels.sideOverhangHint')} bind:value={level.sideOverhang} />
+                {/if}
                 <label class="row behind" title={t('levels.behindHint')}>
                   <input type="checkbox" bind:checked={level.allowBehind} />
                   <span>{t('levels.behind')}<br /><small>{t('levels.behindHint')}</small></span>
@@ -272,4 +292,5 @@
   .behind { align-items: flex-start; font-size: 0.85rem; font-weight: 500; }
   .behind small { font-weight: 400; font-size: 0.75rem; }
   .split { display: grid; gap: 0.25rem; justify-items: start; }
+  .warn-text { color: var(--warn); }
 </style>

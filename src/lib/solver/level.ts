@@ -1,5 +1,6 @@
 import { footprintKey } from '../model/catalog';
 import type { BoxType, Level, Settings, Shelf } from '../model/types';
+import { levelWidth } from '../model/shelfGen';
 
 /** One box in a stack. */
 export interface StackItem {
@@ -63,6 +64,8 @@ export interface LevelCandidate {
   spareHeight: number;
   spareDepth: number;
   overhang: number;
+  /** How far the outer boxes stick out on the left and right (top of shelf). */
+  sideOverhang: number;
   boxIds: string[];
 }
 
@@ -80,6 +83,8 @@ export interface LevelSpace {
   /** Clear height available for boxes (Infinity on an open top without limit). */
   height: number;
   frontOverhang: number;
+  /** Allowed overhang on the left and right (top of shelf only), mm per side. */
+  sideOverhang: number;
   maxStack: number;
   allowBehind: boolean;
   /** Whether top clearance applies (false for an open top). */
@@ -88,10 +93,11 @@ export interface LevelSpace {
 
 export function levelSpace(shelf: Shelf, level: Level): LevelSpace {
   return {
-    width: shelf.clearWidth,
+    width: levelWidth(shelf, level),
     depth: shelf.clearDepth,
     height: level.clearHeight ?? Infinity,
     frontOverhang: shelf.frontOverhang,
+    sideOverhang: level.openTop ? Math.max(0, level.sideOverhang) : 0,
     // No stack limit means "as many as fit" — except on a top without height limit, where
     // nothing would stop the stack; there it only stacks when a number is given.
     maxStack: level.maxStack == null ? (level.clearHeight == null ? 1 : Infinity) : Math.max(1, Math.floor(level.maxStack)),
@@ -308,20 +314,29 @@ export function makeCandidate(columns: ColumnOption[], width: number, gap: numbe
     spareHeight: sorted.length ? Math.min(...sorted.map((c) => c.spareHeight)) : 0,
     spareDepth: sorted.length ? Math.min(...sorted.map((c) => c.spareDepth)) : 0,
     overhang: sorted.length ? Math.max(...sorted.map((c) => c.overhang)) : 0,
+    sideOverhang: 0,
     boxIds: [...new Set(sorted.flatMap((c) => c.items.map((it) => it.boxId)))],
   };
 }
 
 export function solveLevel(space: LevelSpace, boxes: BoxType[], s: Settings): LevelResult {
   const gap = Math.max(0, s.gap);
-  const W = space.width;
-  const options = columnOptions(space, boxes, s);
+  // Side overhang (top of shelf): the outer boxes may stick out, keeping minSupport of their width
+  // on the shelf — checked against the narrowest column, so every layout is safe.
+  const wide = columnOptions({ ...space, width: space.width + 2 * space.sideOverhang }, boxes, s);
+  const support = Math.min(1, Math.max(0, s.minSupport));
+  const reach = space.sideOverhang > 0 && wide.length
+    ? Math.min(space.sideOverhang, Math.min(...wide.map((o) => o.nomW)) * (1 - support))
+    : 0;
+  const W = space.width + 2 * reach;
+  const options = wide.filter((o) => o.w <= W + EPS);
   const bySig = new Map<string, LevelCandidate>();
   const tags: Record<string, string> = {};
 
   const add = (cols: ColumnOption[], tag?: string) => {
     if (!cols.length) return;
     const cand = makeCandidate(cols, W, gap);
+    cand.sideOverhang = Math.max(0, (W - cand.spareWidth - space.width) / 2);
     if (!bySig.has(cand.sig)) bySig.set(cand.sig, cand);
     if (tag && !(tag in tags)) tags[tag] = cand.sig;
   };

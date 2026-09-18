@@ -23,8 +23,11 @@ stored in the browser.
   small parts apart), and pick any alternative layout per level in the results.
 - **Suggestions**: most volume, most boxes, one box size throughout (choose which) and best price
   per litre — with a plain-language comparison and one-click "also try" for unused footprints.
-- **Several shelves / separate bays**: shelves side by side (attached ones share an upright), each
-  bay with its own boxes, level heights and layout; combined shopping list.
+- **Several shelves / separate bays**: shelves side by side; bays of one frame share an upright and
+  each has its own boxes, board heights and layout; combined shopping list.
+- **Top of the shelf**: one continuous surface across the full outer width (all bays, and
+  separately configured bays whose tops are at the same height), optional width override and
+  side overhang (with the minimum-support rule). Separate shelves never share a top.
 - **Manufacturer tolerance**: nominal sizes plus a configurable tolerance (default 5 mm) and gap
   between boxes (default 10 mm). Tight fits are flagged, and when a layout would only fit with
   exactly nominal boxes and no gaps, the calculator says so ("measure your boxes").
