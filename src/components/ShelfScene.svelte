@@ -81,6 +81,9 @@
     return fit / (2 * Math.tan((fov * Math.PI) / 360)) + D;
   });
 
+  const boxKey = (p: PlacedBox) =>
+    [p.boxId, p.levelIndex, p.bay, p.row, p.tier, p.x, p.y, p.zFront, p.w, p.d, p.h, p.lid, p.overhang].join('|');
+
   const dim = (id: string, p: PlacedBox) => highlight != null && (highlight.shelfId !== id || p.levelIndex !== highlight.level);
 </script>
 
@@ -120,7 +123,8 @@
     {/each}
 
     <!-- boxes -->
-    {#each it.placed as p, i (i)}
+    <!-- Keyed by content: Edges builds its outline once on mount, so a changed box must remount. -->
+    {#each it.placed as p (boxKey(p))}
       {@const faded = dim(it.id, p)}
       {@const color = boxColor(byId.get(p.boxId))}
       <T.Mesh position={[(p.x + p.w / 2) * M, (p.y + p.h / 2) * M, (p.zFront - p.d / 2) * M]}>
