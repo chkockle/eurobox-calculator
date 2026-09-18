@@ -84,9 +84,6 @@ export function parseProject(input: unknown): Project {
       selection[k] = { plan: typeof v.plan === 'string' ? v.plan : null, overrides };
     }
   }
-  const objective = ['volume', 'count', 'fewestTypes', 'value'].includes(root.objective as string)
-    ? (root.objective as Project['objective'])
-    : d.objective;
 
   return {
     version: 1,
@@ -106,7 +103,6 @@ export function parseProject(input: unknown): Project {
       currency: str(s.currency, DEFAULT_SETTINGS.currency).slice(0, 5),
       shelfGap: Math.max(0, num(s.shelfGap, DEFAULT_SETTINGS.shelfGap)),
     },
-    objective,
     selection,
   };
 }

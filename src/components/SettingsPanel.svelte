@@ -6,8 +6,12 @@
   const s = $derived(app.project.settings);
 </script>
 
-<section class="card stack" aria-labelledby="settings-h">
-  <h2 id="settings-h">{t('settings.section')}</h2>
+<details class="card settings">
+  <summary>
+    <h2>{t('settings.section')}</h2>
+    <small>{t('settings.summary', { tol: s.tolerance, gap: s.gap, top: s.topClearance })}</small>
+  </summary>
+  <div class="stack body">
   <div class="grid-fields">
     <NumField label={t('settings.tolerance')} unit="mm" bind:value={s.tolerance} hint={t('settings.toleranceHint')} />
     <NumField label={t('settings.gap')} unit="mm" bind:value={s.gap} hint={t('settings.gapHint')} />
@@ -32,10 +36,14 @@
       <input type="text" maxlength="5" size="5" bind:value={s.currency} />
     </label>
   </div>
-</section>
+  </div>
+</details>
 
 <style>
   .field { display: flex; flex-direction: column; gap: 0.2rem; }
   .label { font-size: 0.85rem; font-weight: 500; }
   input[type='text'] { width: 5rem; }
+  .settings > summary h2 { display: inline; }
+  .settings > summary small { display: block; margin: 0.2rem 0 0 1.1rem; font-weight: 400; }
+  .body { margin-top: 0.9rem; }
 </style>

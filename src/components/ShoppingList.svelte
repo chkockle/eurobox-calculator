@@ -20,6 +20,8 @@
   import { fmt, money, t } from '../lib/i18n/index.svelte';
   import type { BoxType, Settings } from '../lib/model/types';
   import { boxColor, boxName } from '../lib/display';
+  import { app } from '../lib/state/app.svelte';
+  import NumField from './NumField.svelte';
 
   interface Props {
     totals: ShoppingTotals;
@@ -83,7 +85,20 @@
           <td><span class="swatch" style:background={boxColor(byId.get(b.boxId))}></span> <strong>{codes.get(b.boxId)}</strong></td>
           <td>{boxName(byId.get(b.boxId))}</td>
           <td class="r num">{b.count}</td>
-          <td class="r num">{b.price != null ? money(b.price, settings.currency) : '–'}</td>
+          <td class="r num price">
+            <span class="print-only">{b.price != null ? money(b.price, settings.currency) : '–'}</span>
+            <span class="no-print">
+              <NumField
+                compact
+                nullable
+                step="any"
+                label={`${t('boxes.price')} ${boxName(byId.get(b.boxId))}`}
+                unit={settings.currency}
+                placeholder="–"
+                bind:value={() => app.project.prices[b.boxId] ?? null, (v) => (v == null || v < 0 ? delete app.project.prices[b.boxId] : (app.project.prices[b.boxId] = v))}
+              />
+            </span>
+          </td>
           <td class="r num">{b.price != null ? money(b.price * b.count, settings.currency) : '–'}</td>
         </tr>
       {/each}
@@ -143,4 +158,6 @@
   th { font-weight: 600; font-size: 0.8rem; color: var(--muted); }
   tfoot td { font-weight: 600; border-bottom: none; }
   .r { text-align: right; }
+  .price :global(.control) { justify-content: flex-end; }
+  .price :global(input) { width: 5.5rem; }
 </style>

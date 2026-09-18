@@ -23,7 +23,6 @@ export function defaultProject(): Project {
     customBoxes: [],
     prices: {},
     settings: { ...DEFAULT_SETTINGS },
-    objective: 'volume',
     selection: {},
   };
 }

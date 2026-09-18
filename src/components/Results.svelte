@@ -1,65 +1,89 @@
 <script lang="ts">
   import { fmt, money, t } from '../lib/i18n/index.svelte';
   import { app } from '../lib/state/app.svelte';
-  import { allBoxes } from '../lib/model/catalog';
-  import type { Objective, Project, Shelf, ShelfSelection } from '../lib/model/types';
-  import { effectivePlan, rankPlans, solveShelf, TIGHT_MM, type Plan } from '../lib/solver/plans';
+  import { allBoxes, DATASET_BOXES, footprintKey } from '../lib/model/catalog';
+  import type { BoxType, Project, Shelf, ShelfSelection } from '../lib/model/types';
+  import { basePlan as findBase, effectivePlan, solveShelf, suggestions, TIGHT_MM, type Plan } from '../lib/solver/plans';
   import type { LevelCandidate } from '../lib/solver/level';
   import { placeBoxes, shelfOffsets } from '../lib/solver/geometry';
-  import { boxColor, boxName, candidateSummary, planLabel } from '../lib/display';
+  import { boxColor, boxName, candidateSummary } from '../lib/display';
   import type { SceneShelf } from './ShelfScene.svelte';
   import ShoppingList, { type ShoppingTotals } from './ShoppingList.svelte';
   // three.js is most of the bundle — load the 3D view separately so the form appears first.
   const scene3d = import('./Scene3D.svelte');
-
-  const objectives: Objective[] = ['volume', 'count', 'fewestTypes', 'value'];
 
   const catalog = $derived(allBoxes(app.project));
   const byId = $derived(new Map(catalog.map((b) => [b.id, b])));
   const settings = $derived($state.snapshot(app.project.settings) as Project['settings']);
   const prices = $derived($state.snapshot(app.project.prices) as Record<string, number>);
 
-  // Solve every shelf (≈10 ms each). Ranking and manual level choices are applied on top,
-  // so switching the objective or a level choice does not re-solve.
+  // Solve every shelf (≈10 ms each). Manual choices are applied on top, so they don't re-solve.
   const solved = $derived.by(() => {
     const enabled = new Set(app.project.enabledBoxIds);
     const boxes = $state.snapshot(catalog.filter((b) => enabled.has(b.id)));
-    const solveSettings = { ...settings, shelfGap: 0 }; // the gap only affects the view
     return app.project.shelves.map((s) => {
       const shelf = $state.snapshot(s) as Shelf;
-      return { shelf, solution: solveShelf(shelf, boxes, { prices, settings: solveSettings }) };
+      return { shelf, solution: solveShelf(shelf, boxes, { prices, settings }) };
     });
   });
 
   const computed = $derived(
     solved.map(({ shelf, solution }) => {
-      const ranked = rankPlans(solution.plans, app.project.objective);
       const selection = $state.snapshot(app.project.selection[shelf.id]) as ShelfSelection | undefined;
-      const basePlan = ranked.find((p) => p.key === selection?.plan) ?? ranked[0];
-      const plan = effectivePlan(shelf, solution, ranked, selection, prices, settings);
-      return { shelf, solution, ranked, selection, basePlan, plan };
+      const base = findBase(solution, selection?.plan ?? null);
+      const plan = effectivePlan(shelf, solution, selection, prices, settings);
+      return { shelf, solution, selection, base, plan, sugg: suggestions(solution) };
     }),
   );
 
   const current = $derived(computed[app.activeShelf]);
   const shelf = $derived(current?.shelf);
   const solution = $derived(current?.solution);
-  const ranked = $derived(current?.ranked ?? []);
   const selection = $derived(current?.selection);
-  const basePlan = $derived(current?.basePlan);
+  const base = $derived(current?.base ?? null);
   const plan = $derived(current?.plan ?? null);
-  const customised = $derived(!!selection && Object.keys(selection.overrides).length > 0);
+  const sugg = $derived(current?.sugg);
+  const overrideCount = $derived(selection ? Object.keys(selection.overrides).length : 0);
   const multi = $derived(computed.length > 1);
-
   const scope = $derived(multi ? app.scope : 'shelf');
 
-  const shown = $derived.by(() => {
-    const top = ranked.slice(0, 6);
-    if (basePlan && !top.includes(basePlan)) top.push(basePlan);
-    return top;
+  // Which card is active: single-size plans all belong to the "one box size" card.
+  const activeCard = $derived(
+    !base ? null : base.key.startsWith('box:') ? 'single' : base.key === 'value' ? 'value' : base.key,
+  );
+  const singlePick = $derived(base?.key.startsWith('box:') ? base : sugg?.singleSize[0] ?? null);
+
+  // One-line comparison between the shown plan and the other main suggestions.
+  const comparison = $derived.by(() => {
+    if (!plan || !sugg) return '';
+    const mv = sugg.maxVolume;
+    const mc = sugg.maxCount;
+    if (mv && mc && mv.count >= mc.count && plan.volume >= mv.volume - 0.05) return t('sugg.cmpBest');
+    if (mv && mv.volume > plan.volume + 0.5) return t('sugg.cmpMoreVolume', { l: fmt(mv.volume - plan.volume), n: mv.count });
+    if (mc && mc.count > plan.count) return t('sugg.cmpMoreBoxes', { n: mc.count, l: fmt(plan.volume - mc.volume) });
+    return '';
   });
 
-  const hasPrices = $derived(Object.keys(prices).length > 0);
+  // Euro footprints the user has not picked at all — offered as one-click additions.
+  const untried = $derived.by(() => {
+    const enabled = new Set(app.project.enabledBoxIds);
+    const map = new Map<string, BoxType[]>();
+    for (const b of DATASET_BOXES.filter((x) => x.family === 'euro')) map.set(footprintKey(b), [...(map.get(footprintKey(b)) ?? []), b]);
+    return [...map].filter(([, list]) => list.every((b) => !enabled.has(b.id)));
+  });
+  const fpLabel = (k: string) => k.split('×').map((mm) => Number(mm) / 10).join('×');
+  const sizeLabel = (key: string) => boxName(byId.get(key.slice(4)));
+
+  function addFootprint(list: BoxType[]) {
+    const set = new Set(app.project.enabledBoxIds);
+    for (const b of list) set.add(b.id);
+    app.project.enabledBoxIds = [...set];
+  }
+
+  function showPrices() {
+    app.showPrices = true;
+    document.getElementById('boxes')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 
   function totalsOf(plans: (Plan | null)[]): ShoppingTotals {
     const counts = new Map<string, number>();
@@ -117,9 +141,9 @@
   }
 
   function setLevel(levelId: string, index: number, sig: string) {
-    if (!shelf || !basePlan) return;
-    const sel = app.project.selection[shelf.id] ?? { plan: basePlan.key, overrides: {} };
-    const baseSig = basePlan.levels[index]?.candidate?.sig ?? '';
+    if (!shelf || !base) return;
+    const sel = app.project.selection[shelf.id] ?? { plan: base.key, overrides: {} };
+    const baseSig = base.levels[index]?.candidate?.sig ?? '';
     if (sig === baseSig) delete sel.overrides[levelId];
     else sel.overrides[levelId] = sig;
     app.project.selection[shelf.id] = sel;
@@ -127,6 +151,10 @@
 
   function resetLevel(levelId: string) {
     if (shelf && app.project.selection[shelf.id]) delete app.project.selection[shelf.id].overrides[levelId];
+  }
+
+  function resetAll() {
+    if (shelf && app.project.selection[shelf.id]) app.project.selection[shelf.id].overrides = {};
   }
 
   function costLine(p: Plan): string {
@@ -138,11 +166,34 @@
   function isTight(c: LevelCandidate | null): boolean {
     return !!c && (c.spareWidth < TIGHT_MM || c.spareHeight < TIGHT_MM);
   }
-  function planTight(p: Plan): boolean {
-    return p.levels.some((l) => isTight(l.candidate));
+  function planWarnings(p: Plan): string[] {
+    const w: string[] = [];
+    if (p.levels.some((l) => isTight(l.candidate))) w.push(t('badge.tight'));
+    if (p.overhang) w.push(t('badge.overhang'));
+    if (p.overloadTotal || p.levels.some((l) => l.overload)) w.push(t('badge.overload'));
+    return w;
   }
-  function notFrontAccessible(c: LevelCandidate | null): boolean {
-    return !!c && c.columns.some((col) => col.rows > 1 || col.stack > 1);
+
+  type Tone = '' | 'warn' | 'danger';
+  /** Plain-language facts for one level, each with a tone for highlighting. */
+  function levelFacts(c: LevelCandidate, i: number): [string, Tone][] {
+    const level = shelf!.levels[i];
+    const lp = plan!.levels[i];
+    const out: [string, Tone][] = [];
+    out.push([t('level.spareWidth', { mm: fmt(c.spareWidth) }), c.spareWidth < TIGHT_MM ? 'warn' : '']);
+    if (Number.isFinite(c.spareHeight)) {
+      out.push([t('level.spareHeight', { mm: fmt(c.spareHeight + (level.openTop ? 0 : settings.topClearance)) }), c.spareHeight < TIGHT_MM ? 'warn' : '']);
+    }
+    if (c.overhang > 0) out.push([t('level.overhang', { mm: fmt(c.overhang) }), 'warn']);
+    if (c.columns.some((col) => col.rows > 1 || col.stack > 1)) out.push([t('badge.hidden'), '']);
+    if (c.columns.some((col) => col.stackLimited)) out.push([t('level.stackLimited', { n: level.maxStack ?? 1 }), 'warn']);
+    if (lp?.loadKg != null) {
+      out.push([
+        level.maxLoadKg != null ? t('level.loadOf', { kg: fmt(lp.loadKg), max: fmt(level.maxLoadKg) }) : t('level.load', { kg: fmt(lp.loadKg) }),
+        lp.overload ? 'danger' : '',
+      ]);
+    }
+    return out;
   }
 
   const levelOrder = $derived(shelf ? shelf.levels.map((_, i) => i).reverse() : []);
@@ -173,68 +224,82 @@
   </svg>
 {/snippet}
 
+{#snippet card(key: string, title: string, p: Plan | null)}
+  {#if p}
+    {@const warnings = planWarnings(p)}
+    <button class="plan" class:active={activeCard === key} aria-pressed={activeCard === key} onclick={() => selectPlan(p.key)}>
+      <span class="plan-title">{title}</span>
+      <span class="plan-main num">{fmt(p.volume)} L</span>
+      <span class="plan-meta muted">{t('plan.boxes', { n: p.count })} · {p.types === 1 ? t('plan.type') : t('plan.types', { n: p.types })}</span>
+      {#if p.cost != null}
+        <span class="plan-meta num">{costLine(p)}{#if p.costPerLitre != null} · {t('plan.perLitre', { c: money(p.costPerLitre, settings.currency) })}{/if}</span>
+      {/if}
+      {#if warnings.length}<span class="plan-warn">{warnings.join(' · ')}</span>{/if}
+    </button>
+  {/if}
+{/snippet}
+
 {#if !shelf}
   <section class="card"><p>{t('results.noShelf')}</p></section>
 {:else}
-  <section class="card stack no-print" aria-labelledby="obj-h">
-    <div class="row between">
-      <h2 id="obj-h">
-        {t('results.objective')}
-        {#if multi}<span class="muted plan-name">— {t('results.suggestionsFor', { name: shelfName(shelf, app.activeShelf) })}</span>{/if}
-      </h2>
-      <div class="seg" role="radiogroup" aria-label={t('results.objective')}>
-        {#each objectives as o (o)}
-          <button
-            role="radio"
-            aria-checked={app.project.objective === o}
-            class:on={app.project.objective === o}
-            disabled={o === 'value' && !hasPrices}
-            title={o === 'value' && !hasPrices ? t('results.noPrices') : undefined}
-            onclick={() => (app.project.objective = o)}
-          >{t(`objective.${o}` as const)}</button>
-        {/each}
-      </div>
-    </div>
+  <section class="card stack no-print" aria-labelledby="sugg-h">
+    <h2 id="sugg-h">
+      {t('results.options')}
+      {#if multi}<span class="muted plan-name">— {shelfName(shelf, app.activeShelf)}</span>{/if}
+    </h2>
 
-    {#if !ranked.length}
+    {#if !sugg?.maxVolume}
       <p class="badge warn">{t('results.none')}</p>
     {:else}
-      <div class="plans" role="group" aria-label={t('results.options')}>
-        {#each shown as p (p.key)}
-          {@const active = basePlan?.key === p.key}
-          <button class="plan" class:active onclick={() => selectPlan(p.key)} aria-current={active}>
-            <span class="plan-title">{planLabel(p.key, byId)}</span>
-            <span class="plan-main num">{t('plan.volume', { v: fmt(p.volume) })}</span>
-            <span class="plan-meta muted">
-              {t('plan.boxes', { n: p.count })} · {p.types === 1 ? t('plan.type') : t('plan.types', { n: p.types })}
-            </span>
-            {#if p.cost != null}
-              <span class="plan-meta num">
-                {costLine(p)}{#if p.costPerLitre != null} · {t('plan.perLitre', { c: money(p.costPerLitre, settings.currency) })}{/if}
-              </span>
+      <div class="plans">
+        {@render card('maxVolume', t('plan.maxVolume'), sugg.maxVolume)}
+        {@render card('maxCount', t('plan.maxCount'), sugg.maxCount)}
+        {#if singlePick}
+          <div class="plan-wrap">
+            {@render card('single', t('sugg.single'), singlePick)}
+            {#if sugg.singleSize.length > 1}
+              <label>
+                <span class="sr-only">{t('sugg.singleChoose')}</span>
+                <select class="single-choose" value={singlePick.key} onchange={(e) => selectPlan(e.currentTarget.value)}>
+                  {#each sugg.singleSize as p (p.key)}
+                    <option value={p.key}>{sizeLabel(p.key)} — {fmt(p.volume)} L · {p.count}×</option>
+                  {/each}
+                </select>
+              </label>
+            {:else}
+              <small class="muted single-name">{sizeLabel(singlePick.key)}</small>
             {/if}
-            <span class="row badges">
-              {#if planTight(p)}<span class="badge warn">{t('badge.tight')}</span>{/if}
-              {#if p.overhang}<span class="badge warn">{t('badge.overhang')}</span>{/if}
-              {#if p.overloadTotal || p.levels.some((l) => l.overload)}<span class="badge danger">{t('badge.overload')}</span>{/if}
-            </span>
-          </button>
-        {/each}
+          </div>
+        {/if}
+        {@render card('value', t('plan.value'), sugg.value)}
       </div>
+
+      <p class="summary">
+        {#if plan}<strong>{t('sugg.summary', { v: fmt(plan.volume), n: plan.count })}.</strong>{/if}
+        {comparison}
+        {#if overrideCount}
+          <span class="custom">{t('sugg.custom', { n: overrideCount })} <button class="link" onclick={resetAll}>{t('sugg.reset')}</button></span>
+        {/if}
+      </p>
+
+      {#if untried.length || !sugg.value}
+        <div class="row try">
+          {#if untried.length}
+            <span class="muted">{t('sugg.tryMore')}</span>
+            {#each untried as [fp, list] (fp)}
+              <button class="chip" onclick={() => addFootprint(list)}>{t('sugg.addFp', { fp: fpLabel(fp), n: list.length })}</button>
+            {/each}
+          {/if}
+          {#if !sugg.value}<button class="link" onclick={showPrices}>{t('sugg.addPrices')}</button>{/if}
+        </div>
+      {/if}
     {/if}
   </section>
 
   {#if plan}
     <section class="card stack" aria-labelledby="view-h">
       <div class="row between">
-        <h2 id="view-h">
-          {#if scope === 'all'}
-            {t('view.title')}: {t('scope.all', { n: computed.length })}
-          {:else}
-            {t('view.title')}: {shelf.name}
-            <span class="muted plan-name">— {planLabel(plan.key, byId)}{customised ? ` (${t('plan.custom')})` : ''}</span>
-          {/if}
-        </h2>
+        <h2 id="view-h">{t('view.title')}: {scope === 'all' ? t('scope.all', { n: computed.length }) : shelf.name}</h2>
         <span class="num"><strong>{fmt(totals.volume)} L</strong> · {t('plan.boxes', { n: totals.count })}</span>
       </div>
 
@@ -276,78 +341,70 @@
       <ol class="level-list">
         {#each levelOrder as i (shelf.levels[i].id)}
           {@const level = shelf.levels[i]}
-          {@const lp = plan.levels[i]}
           {@const result = solution?.levels[i] ?? null}
-          {@const c = lp?.candidate ?? null}
+          {@const c = plan.levels[i]?.candidate ?? null}
           {@const bestVolume = result?.candidates[0]?.volume ?? 0}
+          {@const facts = c ? levelFacts(c, i) : []}
+          {@const hasWarn = facts.some(([, tone]) => tone)}
           <li
-            class="level"
             onmouseenter={() => (hoveredLevel = i)}
             onmouseleave={() => (hoveredLevel = null)}
             onfocusin={() => (hoveredLevel = i)}
             onfocusout={() => (hoveredLevel = null)}
           >
-            <div class="row between">
-              <h3>
-                {level.openTop ? t('level.topTitle') : t('level.title', { n: i + 1 })}
-                <span class="muted">· {level.clearHeight == null ? t('level.clearNoLimit') : t('level.clear', { h: fmt(level.clearHeight) })}</span>
-              </h3>
-              {#if c}<span class="num">{fmt(c.volume * shelf.bays)} L</span>{/if}
-            </div>
+            <details class="level">
+              <summary>
+                <span class="level-title">
+                  <strong>{level.openTop ? t('level.topTitle') : t('level.title', { n: i + 1 })}</strong>
+                  <span class="muted">· {level.clearHeight == null ? t('level.clearNoLimit') : t('level.clear', { h: fmt(level.clearHeight) })}</span>
+                  {#if hasWarn}<span class="dot" title={facts.filter(([, tone]) => tone).map(([x]) => x).join(', ')}></span>{/if}
+                  {#if selection?.overrides[level.id] !== undefined}<span class="badge">{t('plan.custom')}</span>{/if}
+                </span>
+                <span class="num">{c ? `${fmt(c.volume * shelf.bays)} L` : ''}</span>
+                <span class="level-line">
+                  {#if !level.enabled}
+                    {t('level.disabled')}
+                  {:else if !result?.candidates.length}
+                    {t('level.nothingFits')}
+                  {:else if c}
+                    {candidateSummary(c, byId)}
+                  {:else}
+                    {t('level.empty')}
+                  {/if}
+                </span>
+              </summary>
 
-            {#if !level.enabled}
-              <p class="muted">{t('level.disabled')}</p>
-            {:else if !result?.candidates.length}
-              <p class="muted">{t('level.nothingFits')}</p>
-            {:else}
-              <div class="level-body">
-                <div class="stack tight">
-                  <label class="field no-print">
-                    <span class="label">{t('level.choose')}</span>
-                    <select value={c?.sig ?? ''} onchange={(e) => setLevel(level.id, i, e.currentTarget.value)}>
-                      {#each result.candidates as cand (cand.sig)}
-                        <option value={cand.sig}>{candidateSummary(cand, byId)} — {fmt(cand.volume)} L</option>
-                      {/each}
-                      <option value="">{t('level.empty')}</option>
-                    </select>
-                  </label>
-                  {#if c}<p class="print-only">{candidateSummary(c, byId)}</p>{/if}
-                  {#if selection?.overrides[level.id] !== undefined}
-                    <button class="link no-print" onclick={() => resetLevel(level.id)}>{t('level.reset')}</button>
-                  {/if}
-                  {#if c}
-                    <div class="row badges">
-                      <span class="badge" class:warn={c.spareWidth < TIGHT_MM}>{t('level.spareWidth', { mm: fmt(c.spareWidth) })}</span>
-                      {#if Number.isFinite(c.spareHeight)}
-                        <span class="badge" class:warn={c.spareHeight < TIGHT_MM}>{t('level.spareHeight', { mm: fmt(c.spareHeight + (level.openTop ? 0 : settings.topClearance)) })}</span>
-                      {/if}
-                      {#if c.overhang > 0}<span class="badge warn">{t('level.overhang', { mm: fmt(c.overhang) })}</span>{/if}
-                      {#if notFrontAccessible(c)}<span class="badge">{t('badge.hidden')}</span>{/if}
-                      {#if c.columns.some((col) => col.stackLimited)}
-                        <span class="badge warn" title={t('level.stackLimitedHint')}>{t('level.stackLimited', { n: level.maxStack ?? 1 })}</span>
-                      {/if}
-                      {#if lp.loadKg != null}
-                        <span class="badge" class:danger={lp.overload}>
-                          {level.maxLoadKg != null
-                            ? t('level.loadOf', { kg: fmt(lp.loadKg), max: fmt(level.maxLoadKg) })
-                            : t('level.load', { kg: fmt(lp.loadKg) })}
-                        </span>
-                      {/if}
-                    </div>
-                    {#if isTight(c)}<small class="warn-text">{t('badge.tightHint', { mm: TIGHT_MM })}</small>{/if}
-                  {/if}
-                  {#if result.nominalBest && result.nominalBest.volume > bestVolume + 0.5}
-                    <small class="hint">
-                      {t('level.nearMiss', {
-                        what: candidateSummary(result.nominalBest, byId),
-                        l: fmt(result.nominalBest.volume - bestVolume, 1),
-                      })}
-                    </small>
-                  {/if}
+              {#if level.enabled && result?.candidates.length}
+                <div class="level-body">
+                  <div class="stack tight">
+                    {#if c}
+                      <p class="facts">
+                        {#each facts as [text, tone], fi (fi)}{#if fi > 0}<span class="sep" aria-hidden="true">·</span>{/if}<span class={tone}>{text}</span>{/each}
+                      </p>
+                      {#if isTight(c)}<small class="warn-text">{t('badge.tightHint', { mm: TIGHT_MM })}</small>{/if}
+                    {/if}
+                    <label class="field no-print">
+                      <span class="label">{t('level.choose')}</span>
+                      <select value={c?.sig ?? ''} onchange={(e) => setLevel(level.id, i, e.currentTarget.value)}>
+                        {#each result.candidates as cand (cand.sig)}
+                          <option value={cand.sig}>{candidateSummary(cand, byId)} — {fmt(cand.volume)} L</option>
+                        {/each}
+                        <option value="">{t('level.empty')}</option>
+                      </select>
+                    </label>
+                    {#if selection?.overrides[level.id] !== undefined}
+                      <button class="link no-print" onclick={() => resetLevel(level.id)}>{t('level.reset')}</button>
+                    {/if}
+                    {#if result.nominalBest && result.nominalBest.volume > bestVolume + 0.5}
+                      <small class="hint">
+                        {t('level.nearMiss', { what: candidateSummary(result.nominalBest, byId), l: fmt(result.nominalBest.volume - bestVolume, 1) })}
+                      </small>
+                    {/if}
+                  </div>
+                  {#if c}{@render topView(c)}{/if}
                 </div>
-                {#if c}{@render topView(c)}{/if}
-              </div>
-            {/if}
+              {/if}
+            </details>
           </li>
         {/each}
       </ol>
@@ -364,27 +421,45 @@
   .seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
   .seg button { border: none; border-radius: 0; padding: 0.35rem 0.7rem; background: var(--surface); font-size: 0.88rem; }
   .seg button.on { background: var(--accent); color: var(--accent-text); }
-  .plans { display: grid; grid-template-columns: repeat(auto-fill, minmax(12.5rem, 1fr)); gap: 0.6rem; }
+  .plans { display: grid; grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr)); gap: 0.6rem; align-items: stretch; }
+  .plan-wrap { display: grid; gap: 0.3rem; grid-template-rows: 1fr auto; }
   .plan {
     display: flex; flex-direction: column; align-items: flex-start; gap: 0.15rem; text-align: left;
-    padding: 0.65rem 0.75rem; border-radius: 9px; background: var(--surface);
+    padding: 0.65rem 0.75rem; border-radius: 9px; background: var(--surface); height: 100%;
   }
   .plan.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); background: var(--accent-soft); }
   .plan-title { font-weight: 600; font-size: 0.88rem; }
   .plan-main { font-size: 1.3rem; font-weight: 700; }
   .plan-meta { font-size: 0.82rem; }
+  .plan-warn { font-size: 0.78rem; color: var(--warn); font-weight: 600; }
+  .single-choose { width: 100%; font-size: 0.82rem; }
+  .single-name { padding-left: 0.25rem; }
   .plan-name { font-weight: 400; font-size: 0.9rem; }
-  .badges { gap: 0.3rem; }
+  .summary { font-size: 0.9rem; display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: baseline; }
+  .summary .custom { color: var(--warn); }
+  .try { gap: 0.4rem; font-size: 0.85rem; }
+  .chip { font-size: 0.8rem; padding: 0.15rem 0.6rem; border-radius: 999px; }
   .legend { gap: 0.4rem 1rem; font-size: 0.85rem; }
   .legend-item { gap: 0.35rem; }
   .gap-field { font-size: 0.85rem; gap: 0.35rem; }
   .gap-field input { width: 5rem; }
-  .level-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.6rem; }
-  .level { border: 1px solid var(--border); border-radius: 8px; padding: 0.65rem 0.8rem; display: grid; gap: 0.45rem; }
-  .level:hover { border-color: var(--accent); }
-  .level-body { display: grid; grid-template-columns: 1fr minmax(8rem, 13rem); gap: 0.8rem; align-items: start; }
+  .level-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.4rem; }
+  .level { border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem 0.75rem; }
+  .level:hover, .level[open] { border-color: var(--accent); }
+  .level > summary { display: grid; grid-template-columns: 1fr auto; gap: 0.1rem 0.75rem; cursor: pointer; list-style: none; }
+  .level > summary::-webkit-details-marker { display: none; }
+  .level-title { display: flex; gap: 0.35rem; align-items: center; flex-wrap: wrap; }
+  .level-title::before { content: '▸'; color: var(--muted); font-size: 0.8rem; transition: transform 0.15s; }
+  .level[open] .level-title::before { transform: rotate(90deg); }
+  .level-line { grid-column: 1 / -1; font-size: 0.85rem; color: var(--muted); padding-left: 1rem; }
+  .dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--warn); display: inline-block; }
+  .level-body { display: grid; grid-template-columns: 1fr minmax(8rem, 13rem); gap: 0.8rem; align-items: start; margin-top: 0.6rem; }
   @media (max-width: 560px) { .level-body { grid-template-columns: 1fr; } }
-  .stack.tight { gap: 0.4rem; }
+  .facts { font-size: 0.85rem; }
+  .facts .warn { color: var(--warn); font-weight: 600; }
+  .facts .danger { color: var(--danger); font-weight: 600; }
+  .sep { color: var(--muted); padding: 0 0.4rem; }
+  .stack.tight { gap: 0.45rem; }
   .field { display: flex; flex-direction: column; gap: 0.2rem; }
   .label { font-size: 0.85rem; font-weight: 500; }
   select { width: 100%; }
@@ -396,4 +471,5 @@
   .top-view .edge { stroke: var(--muted); stroke-width: 6; stroke-dasharray: 20 12; }
   .top-view .code { font: 700 70px system-ui, sans-serif; text-anchor: middle; dominant-baseline: middle; fill: #111; }
   .scene-loading { height: min(62vh, 560px); min-height: 320px; background: var(--scene-bg); border-radius: 8px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 </style>

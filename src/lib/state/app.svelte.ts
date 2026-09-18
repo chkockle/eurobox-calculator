@@ -18,6 +18,8 @@ export const app = $state({
   activeShelf: 0,
   /** Results show the active shelf only, or all shelves side by side. */
   scope: (init.project.shelves.some((s) => s.joined) ? 'all' : 'shelf') as 'shelf' | 'all',
+  /** Show price inputs on the box tiles. */
+  showPrices: Object.keys(init.project.prices).length > 0,
   toast: init.fromLink ? 'action.sharedLoaded' : '',
 });
 

@@ -3,6 +3,7 @@
   import { app } from '../lib/state/app.svelte';
   import { PRESETS, makeLevel, shelfFromQuick, uid, type QuickShelfInput } from '../lib/model/shelfGen';
   import { allBoxes } from '../lib/model/catalog';
+  import type { Level } from '../lib/model/types';
   import NumField from './NumField.svelte';
   import MeasureGuide from './MeasureGuide.svelte';
   import BoxFilter from './BoxFilter.svelte';
@@ -101,6 +102,16 @@
 
   const shelfAllowed = $derived(shelf?.boxIds ? enabledBoxes.filter((b) => shelf.boxIds!.includes(b.id)) : enabledBoxes);
 
+  /** Short list of non-default level settings, shown on the collapsed "More" line. */
+  function levelExtras(l: Level): string[] {
+    const out: string[] = [];
+    if (l.maxStack != null) out.push(l.maxStack === 1 ? t('levels.xNoStack') : t('levels.xStack', { n: l.maxStack }));
+    if (l.allowBehind) out.push(t('levels.xBehind'));
+    if (l.maxLoadKg != null) out.push(t('levels.xLoad', { kg: l.maxLoadKg }));
+    if (l.boxIds) out.push(t('levels.xBoxes', { n: l.boxIds.length }));
+    return out;
+  }
+
   const levelOrder = $derived(shelf ? shelf.levels.map((_, i) => i).reverse() : []);
 </script>
 
@@ -197,29 +208,34 @@
       <ol class="levels">
         {#each levelOrder as i (shelf.levels[i].id)}
           {@const level = shelf.levels[i]}
+          {@const extras = levelExtras(level)}
           <li class="level" class:off={!level.enabled}>
-            <div class="level-head">
-              <label class="row use">
-                <input type="checkbox" bind:checked={level.enabled} aria-label={t('levels.use')} />
-                <strong>{t('levels.level')} {i + 1}</strong>
-                {#if level.openTop}<span class="badge">{t('levels.top')}</span>{/if}
-              </label>
-              <button class="icon" title={t('levels.remove')} aria-label={t('levels.remove')} onclick={() => removeLevel(i)}>✕</button>
-            </div>
-            <div class="level-fields">
+            <div class="level-row">
+              <input type="checkbox" bind:checked={level.enabled} aria-label={`${t('levels.use')}: ${t('levels.level')} ${i + 1}`} />
+              <strong class="name">
+                {level.openTop ? t('levels.topShort') : `${t('levels.level')} ${i + 1}`}
+              </strong>
               {#if level.openTop}
-                <NumField label={t('levels.clearHeight')} unit="mm" nullable placeholder={t('levels.noLimit')} hint={t('levels.topHint')} bind:value={level.clearHeight} />
+                <NumField compact label={t('levels.clearHeight')} unit="mm" nullable placeholder={t('levels.noLimit')} bind:value={level.clearHeight} />
               {:else}
-                <NumField label={t('levels.clearHeight')} unit="mm" bind:value={() => level.clearHeight ?? 0, (v) => (level.clearHeight = v ?? 0)} />
+                <NumField compact label={t('levels.clearHeight')} unit="mm" bind:value={() => level.clearHeight ?? 0, (v) => (level.clearHeight = v ?? 0)} />
               {/if}
-              <NumField label={t('levels.stack')} nullable placeholder={t('levels.noLimit')} bind:value={level.maxStack} min={1} max={20} hint={level.openTop && level.clearHeight == null ? t('levels.stackHintTop') : t('levels.stackHint')} />
-              <NumField label={t('levels.maxLoad')} unit="kg" nullable bind:value={level.maxLoadKg} />
-              <label class="row behind" title={t('levels.behindHint')}>
-                <input type="checkbox" bind:checked={level.allowBehind} />
-                <span>{t('levels.behind')}<br /><small>{t('levels.behindHint')}</small></span>
-              </label>
+              <button class="icon remove" title={t('levels.remove')} aria-label={t('levels.remove')} onclick={() => removeLevel(i)}>✕</button>
             </div>
-            <BoxFilter bind:value={level.boxIds} boxes={shelfAllowed} label={t('levels.boxes')} hint={t('levels.boxesHint')} />
+            <details class="more">
+              <summary>
+                {t('levels.more')}{#if extras.length}: <span class="extras">{extras.join(' · ')}</span>{/if}
+              </summary>
+              <div class="level-fields">
+                <NumField label={t('levels.stack')} nullable placeholder={t('levels.noLimit')} bind:value={level.maxStack} min={1} max={20} hint={level.openTop && level.clearHeight == null ? t('levels.stackHintTop') : t('levels.stackHint')} />
+                <NumField label={t('levels.maxLoad')} unit="kg" nullable bind:value={level.maxLoadKg} />
+                <label class="row behind" title={t('levels.behindHint')}>
+                  <input type="checkbox" bind:checked={level.allowBehind} />
+                  <span>{t('levels.behind')}<br /><small>{t('levels.behindHint')}</small></span>
+                </label>
+              </div>
+              <BoxFilter bind:value={level.boxIds} boxes={shelfAllowed} label={t('levels.boxes')} hint={t('levels.boxesHint')} />
+            </details>
           </li>
         {/each}
       </ol>
@@ -244,9 +260,14 @@
   .tabs { display: flex; gap: 0.35rem; flex-wrap: wrap; }
   .tabs button.active { background: var(--accent-soft); border-color: var(--accent); font-weight: 600; }
   .levels { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
-  .level { border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem 0.75rem; display: grid; gap: 0.5rem; background: var(--surface); }
+  .level { border: 1px solid var(--border); border-radius: 8px; padding: 0.45rem 0.65rem; display: grid; gap: 0.3rem; background: var(--surface); }
   .level.off { opacity: 0.6; }
-  .level-head { display: flex; justify-content: space-between; align-items: center; }
+  .level-row { display: flex; align-items: center; gap: 0.6rem; }
+  .level-row .name { flex: 1; font-size: 0.9rem; }
+  .more > summary { font-size: 0.8rem; font-weight: 500; color: var(--muted); }
+  .more[open] > summary { margin-bottom: 0.5rem; }
+  .extras { color: var(--accent); font-weight: 600; }
+  .more .level-fields { margin-bottom: 0.5rem; }
   .level-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr)); gap: 0.5rem 0.75rem; align-items: start; }
   .behind { align-items: flex-start; font-size: 0.85rem; font-weight: 500; }
   .behind small { font-weight: 400; font-size: 0.75rem; }

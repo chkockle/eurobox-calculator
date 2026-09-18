@@ -18,9 +18,12 @@ stored in the browser.
   box depth must rest on the board.
 - **Box catalogue**: Euroboxes (60×40, 40×30, 30×20, 80×60), attached-lid containers and VDA KLT,
   plus your own boxes. Optional prices per box.
-- **Per-level box choice**: limit a level to certain boxes (e.g. small boxes to keep small parts
-  apart), and pick any alternative layout per level in the results.
-- **Objectives**: most volume, most boxes, fewest box types, best price per litre.
+- **Box filters**: limit a shelf/bay or a single level to certain boxes (e.g. small boxes to keep
+  small parts apart), and pick any alternative layout per level in the results.
+- **Suggestions**: most volume, most boxes, one box size throughout (choose which) and best price
+  per litre — with a plain-language comparison and one-click "also try" for unused footprints.
+- **Several shelves / separate bays**: shelves side by side (attached ones share an upright), each
+  bay with its own boxes, level heights and layout; combined shopping list.
 - **Manufacturer tolerance**: nominal sizes plus a configurable tolerance (default 5 mm) and gap
   between boxes (default 10 mm). Tight fits are flagged, and when a layout would only fit with
   exactly nominal boxes and no gaps, the calculator says so ("measure your boxes").

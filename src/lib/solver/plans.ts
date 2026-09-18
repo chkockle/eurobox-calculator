@@ -1,5 +1,6 @@
-import { footprintKey } from '../model/catalog';
-import type { BoxType, Level, Objective, Project, Settings, Shelf } from '../model/types';
+import type { BoxType, Level, Project, Settings, Shelf } from '../model/types';
+
+export type Objective = 'volume' | 'count' | 'fewestTypes' | 'value';
 import { levelSpace, solveLevel, type LevelCandidate, type LevelResult } from './level';
 
 export interface LevelPlan {
@@ -59,26 +60,22 @@ export function solveShelf(shelf: Shelf, boxes: BoxType[], project: Pick<Project
     return cache.get(k)!;
   });
 
-  const strategies = new Set<string>(['maxVolume', 'maxCount']);
-  for (const b of boxes) {
-    strategies.add(`fp:${footprintKey(b)}`);
-    strategies.add(`box:${b.id}`);
-  }
-  const hasPrices = boxes.some((b) => project.prices[b.id] != null);
-  if (hasPrices) strategies.add('value');
+  // Strategies: most volume, most boxes, one box size throughout (per box type) and best price.
+  const strategies = ['maxVolume', 'maxCount', ...boxes.map((b) => `box:${b.id}`)];
+  if (boxes.some((b) => project.prices[b.id] != null)) strategies.push('value');
 
   const plans: Plan[] = [];
-  const seen = new Set<string>();
   for (const key of strategies) {
     // A level with its own box list keeps its best fill in every plan, instead of going empty
     // when the plan's single box type is not allowed there.
     const picks = levels.map((r, i) =>
       r ? pickFor(key, r, project.prices) ?? (shelf.levels[i].boxIds || shelf.boxIds ? pickFor('maxVolume', r, project.prices) : null) : null,
     );
-    const sig = picks.map((c) => c?.sig ?? '-').join('/');
-    if (seen.has(sig) || picks.every((c) => !c)) continue;
-    seen.add(sig);
-    plans.push(buildPlan(key, shelf, picks, project.prices, project.settings));
+    if (picks.every((c) => !c)) continue;
+    const plan = buildPlan(key, shelf, picks, project.prices, project.settings);
+    // A single-size plan only counts if that size is actually used somewhere.
+    if (key.startsWith('box:') && !plan.boxes.some((b) => b.boxId === key.slice(4))) continue;
+    plans.push(plan);
   }
   return { levels, plans };
 }
@@ -178,6 +175,33 @@ export function buildPlan(
   };
 }
 
+/** The plan a selection refers to; falls back to "most volume". */
+export function basePlan(solution: ShelfSolution, key: string | null): Plan | null {
+  const usable = solution.plans.filter((p) => p.count > 0);
+  return usable.find((p) => p.key === key) ?? usable.find((p) => p.key === 'maxVolume') ?? usable[0] ?? null;
+}
+
+/** The handful of clearly different suggestions shown to the user. */
+export interface Suggestions {
+  maxVolume: Plan | null;
+  maxCount: Plan | null;
+  /** One plan per box size, most volume first. */
+  singleSize: Plan[];
+  /** Lowest price per litre among fully priced plans. */
+  value: Plan | null;
+}
+
+export function suggestions(solution: ShelfSolution): Suggestions {
+  const usable = solution.plans.filter((p) => p.count > 0);
+  const byValue = rankPlans(usable, 'value');
+  return {
+    maxVolume: usable.find((p) => p.key === 'maxVolume') ?? null,
+    maxCount: usable.find((p) => p.key === 'maxCount') ?? null,
+    singleSize: rankPlans(usable.filter((p) => p.key.startsWith('box:')), 'volume'),
+    value: byValue[0]?.costPerLitre != null ? byValue[0] : null,
+  };
+}
+
 export function rankPlans(plans: Plan[], objective: Objective): Plan[] {
   const byVolume = (a: Plan, b: Plan) => b.volume - a.volume || b.count - a.count || a.types - b.types;
   const cmp: Record<Objective, (a: Plan, b: Plan) => number> = {
@@ -200,12 +224,11 @@ export function rankPlans(plans: Plan[], objective: Objective): Plan[] {
 export function effectivePlan(
   shelf: Shelf,
   solution: ShelfSolution,
-  ranked: Plan[],
   selection: { plan: string | null; overrides: Record<string, string> } | undefined,
   prices: Record<string, number>,
   settings: Settings,
 ): Plan | null {
-  const base = ranked.find((p) => p.key === selection?.plan) ?? ranked[0];
+  const base = basePlan(solution, selection?.plan ?? null);
   if (!base) return null;
   const overrides = selection?.overrides ?? {};
   if (!Object.keys(overrides).length) return base;

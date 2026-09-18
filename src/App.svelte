@@ -171,6 +171,10 @@
   }
   .inputs, .results { min-width: 0; }
   @media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+  /* Wide screens: keep the result in view while editing the inputs on the left. */
+  @media (min-width: 1100px) {
+    .results { position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow-y: auto; overscroll-behavior: contain; padding-right: 0.25rem; }
+  }
   .page { padding: 1rem clamp(1rem, 3vw, 2rem); }
   .legal-links { gap: 1rem; }
   footer { padding: 1rem clamp(1rem, 3vw, 2rem) 2rem; font-size: 0.8rem; display: grid; gap: 0.25rem; max-width: 1600px; margin: 0 auto; }

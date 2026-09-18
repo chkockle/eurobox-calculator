@@ -6,7 +6,7 @@ import type { BoxType, Settings, Shelf } from '../model/types';
 import { parseProject, projectFromHash, shareHash } from '../state/persist';
 import { placeBoxes, shelfOffsets, shelfOuterWidth } from './geometry';
 import { columnOptions, fillWidth, levelSpace, solveLevel, type LevelSpace } from './level';
-import { effectivePlan, rankPlans, solveShelf } from './plans';
+import { basePlan, effectivePlan, rankPlans, solveShelf, suggestions } from './plans';
 
 const box = (id: string): BoxType => {
   const b = DATASET_BOXES.find((x) => x.id === id);
@@ -164,10 +164,11 @@ describe('solveShelf on the OBI preset', () => {
     const ranked = rankPlans(sol.plans, 'volume');
     const lvl = shelf.levels[0];
     const alt = sol.levels[0]!.candidates.at(-1)!;
-    const p = effectivePlan(shelf, sol, ranked, { plan: null, overrides: { [lvl.id]: alt.sig } }, {}, project.settings)!;
+    const p = effectivePlan(shelf, sol, { plan: null, overrides: { [lvl.id]: alt.sig } }, {}, project.settings)!;
     expect(p.levels[0].candidate?.sig).toBe(alt.sig);
-    const stale = effectivePlan(shelf, sol, ranked, { plan: null, overrides: { [lvl.id]: 'nope' } }, {}, project.settings)!;
-    expect(stale.levels[0].candidate?.sig).toBe(ranked[0].levels[0].candidate?.sig);
+    const stale = effectivePlan(shelf, sol, { plan: null, overrides: { [lvl.id]: 'nope' } }, {}, project.settings)!;
+    expect(stale.levels[0].candidate?.sig).toBe(basePlan(sol, null)!.levels[0].candidate?.sig);
+    expect(ranked.length).toBeGreaterThan(0);
   });
 
   it('flags overload only with user-provided limits', () => {
@@ -194,6 +195,17 @@ describe('solveShelf on the OBI preset', () => {
     for (const r of sol.levels) expect(r!.candidates.every((c) => c.boxIds.every((id) => only40.includes(id)))).toBe(true);
     const s3 = { ...s2, levels: s2.levels.map((l, i) => (i === 0 ? { ...l, boxIds: ['euro-600x400x320'] } : l)) };
     expect(solveShelf(s3, boxes, project).levels[0]!.candidates).toHaveLength(0);
+  });
+
+  it('offers most volume, most boxes, one plan per box size and a price suggestion', () => {
+    const sol = solveShelf(shelf, boxes, { ...project, prices: { 'euro-600x400x320': 10 } });
+    const s = suggestions(sol);
+    expect(s.maxVolume?.key).toBe('maxVolume');
+    expect(s.maxCount!.count).toBeGreaterThanOrEqual(s.maxVolume!.count);
+    expect(s.singleSize.length).toBeGreaterThan(3);
+    expect(s.singleSize.every((p) => p.types === 1)).toBe(true);
+    for (let i = 1; i < s.singleSize.length; i++) expect(s.singleSize[i - 1].volume).toBeGreaterThanOrEqual(s.singleSize[i].volume);
+    expect(s.value?.boxes.every((b) => b.boxId === 'euro-600x400x320')).toBe(true);
   });
 
   it('ranks by price per litre when prices are given', () => {

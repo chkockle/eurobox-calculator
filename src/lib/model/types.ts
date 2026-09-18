@@ -85,8 +85,6 @@ export interface Settings {
   shelfGap: number;
 }
 
-export type Objective = 'volume' | 'count' | 'fewestTypes' | 'value';
-
 export interface ShelfSelection {
   /** Chosen plan strategy key. */
   plan: string | null;
@@ -103,6 +101,5 @@ export interface Project {
   /** Price per box, keyed by box id. */
   prices: Record<string, number>;
   settings: Settings;
-  objective: Objective;
   selection: Record<string, ShelfSelection>;
 }
