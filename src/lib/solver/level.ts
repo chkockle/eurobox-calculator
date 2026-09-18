@@ -77,7 +77,9 @@ export function levelSpace(shelf: Shelf, level: Level): LevelSpace {
     depth: shelf.clearDepth,
     height: level.clearHeight ?? Infinity,
     frontOverhang: shelf.frontOverhang,
-    maxStack: Math.max(1, Math.floor(level.maxStack)),
+    // No stack limit means "as many as fit" — except on a top without height limit, where
+    // nothing would stop the stack; there it only stacks when a number is given.
+    maxStack: level.maxStack == null ? (level.clearHeight == null ? 1 : Infinity) : Math.max(1, Math.floor(level.maxStack)),
     allowBehind: level.allowBehind,
     needsClearance: !level.openTop,
   };
@@ -128,7 +130,7 @@ export function columnOptions(space: LevelSpace, boxes: BoxType[], s: Settings):
         overhang: Math.max(0, used - space.depth),
         spareDepth: maxDepth - used,
         spareHeight: usableH - stack * h,
-        stackLimited: heightFits > stack,
+        stackLimited: Number.isFinite(heightFits) && heightFits > stack,
       });
     }
   }

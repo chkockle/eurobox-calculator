@@ -31,8 +31,8 @@ export interface Level {
   /** True for the space on top of the highest board (nothing above it). */
   openTop: boolean;
   enabled: boolean;
-  /** 1 = no stacking. */
-  maxStack: number;
+  /** Most boxes on top of each other: 1 = no stacking, null = as many as fit. */
+  maxStack: number | null;
   /** Allow boxes behind other boxes (not everything reachable from the front). */
   allowBehind: boolean;
   /** Rated load of this board, as given by the user. null = unknown, no check. */

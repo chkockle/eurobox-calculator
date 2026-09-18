@@ -5,7 +5,7 @@ import { PRESETS, makeLevel, shelfFromQuick } from '../model/shelfGen';
 import type { BoxType, Settings, Shelf } from '../model/types';
 import { parseProject, projectFromHash, shareHash } from '../state/persist';
 import { placeBoxes } from './geometry';
-import { columnOptions, fillWidth, solveLevel, type LevelSpace } from './level';
+import { columnOptions, fillWidth, levelSpace, solveLevel, type LevelSpace } from './level';
 import { effectivePlan, rankPlans, solveShelf } from './plans';
 
 const box = (id: string): BoxType => {
@@ -76,6 +76,25 @@ describe('columnOptions', () => {
     expect(r.candidates[0].columns.every((c) => c.boxId === 'euro-600x400x320')).toBe(true);
     const stacked = columnOptions({ ...open, maxStack: 3 }, boxes, S);
     expect(stacked.every((o) => o.stack === 3)).toBe(true);
+  });
+});
+
+describe('levelSpace stacking', () => {
+  const shelf = shelfFromQuick(PRESETS[0].input);
+  it('stacks as many as fit when no limit is set, and respects a set maximum', () => {
+    const b = [box('euro-400x300x150')];
+    const s = { ...DEFAULT_SETTINGS }; // 5 mm tolerance, 30 mm top clearance
+    const level = { ...makeLevel(520), maxStack: null };
+    expect(columnOptions(levelSpace(shelf, level), b, s)[0].stack).toBe(3); // 3 × 155 ≤ 490
+    expect(columnOptions(levelSpace(shelf, { ...level, maxStack: 2 }), b, s)[0].stack).toBe(2);
+    expect(columnOptions(levelSpace(shelf, { ...level, maxStack: 3 }), b, s)[0].stack).toBe(3);
+  });
+
+  it('does not stack endlessly on a top without height limit', () => {
+    const b = [box('euro-400x300x150')];
+    const top = makeLevel(null, true);
+    expect(columnOptions(levelSpace(shelf, top), b, DEFAULT_SETTINGS)[0].stack).toBe(1);
+    expect(columnOptions(levelSpace(shelf, { ...top, maxStack: 4 }), b, DEFAULT_SETTINGS)[0].stack).toBe(4);
   });
 });
 
@@ -190,6 +209,7 @@ describe('persistence', () => {
     const p = parseProject({ shelves: [{ bays: -3, levels: [{ maxStack: 0 }] }], prices: { a: -1, b: 2 } });
     expect(p.shelves[0].bays).toBe(1);
     expect(p.shelves[0].levels[0].maxStack).toBe(1);
+    expect(parseProject({ shelves: [{ levels: [{ maxStack: null }] }] }).shelves[0].levels[0].maxStack).toBeNull();
     expect(p.prices).toEqual({ b: 2 });
   });
 });

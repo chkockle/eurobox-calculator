@@ -79,7 +79,7 @@ export function makeLevel(clearHeight: number | null, openTop = false): Level {
     clearHeight,
     openTop,
     enabled: true,
-    maxStack: 1,
+    maxStack: null,
     allowBehind: false,
     maxLoadKg: null,
     boxIds: null,

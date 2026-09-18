@@ -200,7 +200,7 @@
               {:else}
                 <NumField label={t('levels.clearHeight')} unit="mm" bind:value={() => level.clearHeight ?? 0, (v) => (level.clearHeight = v ?? 0)} />
               {/if}
-              <NumField label={t('levels.stack')} bind:value={level.maxStack} min={1} max={10} hint={t('levels.stackHint')} />
+              <NumField label={t('levels.stack')} nullable placeholder={t('levels.noLimit')} bind:value={level.maxStack} min={1} max={20} hint={level.openTop && level.clearHeight == null ? t('levels.stackHintTop') : t('levels.stackHint')} />
               <NumField label={t('levels.maxLoad')} unit="kg" nullable bind:value={level.maxLoadKg} />
               <label class="row behind" title={t('levels.behindHint')}>
                 <input type="checkbox" bind:checked={level.allowBehind} />

@@ -329,7 +329,7 @@
                       {#if c.overhang > 0}<span class="badge warn">{t('level.overhang', { mm: fmt(c.overhang) })}</span>{/if}
                       {#if notFrontAccessible(c)}<span class="badge">{t('badge.hidden')}</span>{/if}
                       {#if c.columns.some((col) => col.stackLimited)}
-                        <span class="badge warn" title={t('level.stackLimitedHint')}>{t('level.stackLimited', { n: level.maxStack })}</span>
+                        <span class="badge warn" title={t('level.stackLimitedHint')}>{t('level.stackLimited', { n: level.maxStack ?? 1 })}</span>
                       {/if}
                       {#if lp.loadKg != null}
                         <span class="badge" class:danger={lp.overload}>

@@ -20,7 +20,7 @@ function parseLevel(v: unknown): Level {
     clearHeight: openTop && o.clearHeight == null ? null : Math.max(0, num(o.clearHeight, 300)),
     openTop,
     enabled: o.enabled !== false,
-    maxStack: Math.max(1, Math.round(num(o.maxStack, 1))),
+    maxStack: o.maxStack === null ? null : Math.max(1, Math.round(num(o.maxStack, 1))),
     allowBehind: o.allowBehind === true,
     maxLoadKg: numOrNull(o.maxLoadKg),
     boxIds: Array.isArray(o.boxIds) ? o.boxIds.filter((x): x is string => typeof x === 'string') : null,
