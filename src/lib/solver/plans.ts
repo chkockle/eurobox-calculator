@@ -178,7 +178,8 @@ export function buildPlan(
 /** The plan a selection refers to; falls back to "most volume". */
 export function basePlan(solution: ShelfSolution, key: string | null): Plan | null {
   const usable = solution.plans.filter((p) => p.count > 0);
-  return usable.find((p) => p.key === key) ?? usable.find((p) => p.key === 'maxVolume') ?? usable[0] ?? null;
+  const chosen = key === 'value' ? suggestions(solution).value : usable.find((p) => p.key === key);
+  return chosen ?? usable.find((p) => p.key === 'maxVolume') ?? usable[0] ?? null;
 }
 
 /** The handful of clearly different suggestions shown to the user. */
@@ -198,7 +199,9 @@ export function suggestions(solution: ShelfSolution): Suggestions {
     maxVolume: usable.find((p) => p.key === 'maxVolume') ?? null,
     maxCount: usable.find((p) => p.key === 'maxCount') ?? null,
     singleSize: rankPlans(usable.filter((p) => p.key.startsWith('box:')), 'volume'),
-    value: byValue[0]?.costPerLitre != null ? byValue[0] : null,
+    // The cheapest plan may be any strategy (often a single-size one); it is keyed 'value' so that
+    // selecting this suggestion stays on it instead of switching to the matching single-size card.
+    value: byValue[0]?.costPerLitre != null ? { ...byValue[0], key: 'value' } : null,
   };
 }
 

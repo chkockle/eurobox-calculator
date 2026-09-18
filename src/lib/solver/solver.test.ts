@@ -4,6 +4,7 @@ import { DEFAULT_SETTINGS, defaultProject } from '../model/defaults';
 import { PRESETS, makeLevel, shelfFromQuick } from '../model/shelfGen';
 import type { BoxType, Settings, Shelf } from '../model/types';
 import { parseProject, projectFromHash, shareHash } from '../state/persist';
+import { parseDecimal } from '../format';
 import { placeBoxes, shelfOffsets, shelfOuterWidth } from './geometry';
 import { columnOptions, fillWidth, levelSpace, solveLevel, type LevelSpace } from './level';
 import { basePlan, effectivePlan, rankPlans, solveShelf, suggestions } from './plans';
@@ -206,6 +207,10 @@ describe('solveShelf on the OBI preset', () => {
     expect(s.singleSize.every((p) => p.types === 1)).toBe(true);
     for (let i = 1; i < s.singleSize.length; i++) expect(s.singleSize[i - 1].volume).toBeGreaterThanOrEqual(s.singleSize[i].volume);
     expect(s.value?.boxes.every((b) => b.boxId === 'euro-600x400x320')).toBe(true);
+    // Selecting the price suggestion keeps it, even if it equals a single-size plan.
+    expect(s.value?.key).toBe('value');
+    expect(basePlan(sol, 'value')?.key).toBe('value');
+    expect(basePlan(sol, 'value')?.costPerLitre).toBe(s.value?.costPerLitre);
   });
 
   it('ranks by price per litre when prices are given', () => {
@@ -224,6 +229,17 @@ describe('shelfOffsets', () => {
     const c = { ...a, joined: false };
     const w = shelfOuterWidth(a);
     expect(shelfOffsets([a, b, c], 20)).toEqual([0, w - 35, 2 * w - 35 + 20]);
+  });
+});
+
+describe('parseDecimal', () => {
+  it('accepts comma and dot as decimal separator', () => {
+    expect(parseDecimal('4,3')).toBe(4.3);
+    expect(parseDecimal('5.03')).toBe(5.03);
+    expect(parseDecimal('1.234,50')).toBe(1234.5);
+    expect(parseDecimal(' 9,06 ')).toBe(9.06);
+    expect(parseDecimal('')).toBeNull();
+    expect(parseDecimal('abc')).toBeNaN();
   });
 });
 

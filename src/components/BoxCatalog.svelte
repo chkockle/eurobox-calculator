@@ -88,7 +88,7 @@
         nullable
         label={`${t('boxes.price')} ${boxName(b)}`}
         unit={app.project.settings.currency}
-        step="any"
+        decimals={2}
         placeholder={t('boxes.price')}
         bind:value={() => app.project.prices[b.id] ?? null, (v) => setPrice(b.id, v)}
       />

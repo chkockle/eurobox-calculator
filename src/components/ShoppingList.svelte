@@ -91,7 +91,7 @@
               <NumField
                 compact
                 nullable
-                step="any"
+                decimals={2}
                 label={`${t('boxes.price')} ${boxName(byId.get(b.boxId))}`}
                 unit={settings.currency}
                 placeholder="–"

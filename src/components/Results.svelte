@@ -232,7 +232,7 @@
       <span class="plan-main num">{fmt(p.volume)} L</span>
       <span class="plan-meta muted">{t('plan.boxes', { n: p.count })} · {p.types === 1 ? t('plan.type') : t('plan.types', { n: p.types })}</span>
       {#if p.cost != null}
-        <span class="plan-meta num">{costLine(p)}{#if p.costPerLitre != null} · {t('plan.perLitre', { c: money(p.costPerLitre, settings.currency) })}{/if}</span>
+        <span class="plan-meta num">{costLine(p)}{#if p.costPerLitre != null}<span class="sep" aria-hidden="true">·</span>{t('plan.perLitre', { c: money(p.costPerLitre, settings.currency) })}{/if}</span>
       {/if}
       {#if warnings.length}<span class="plan-warn">{warnings.join(' · ')}</span>{/if}
     </button>
