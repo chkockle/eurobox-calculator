@@ -187,6 +187,10 @@ export const de: Record<MessageKey, string> = {
 
   'note.sizes': 'Zu den Boxmaßen: Der Katalog nutzt nominale Außenmaße. Echte Boxen gleicher Nenngröße unterscheiden sich je nach Hersteller um einige Millimeter und sind am Rand am breitesten. Die Toleranz-Einstellung deckt das ab; als „knapp“ markierte Belegungen solltest du mit dem Datenblatt der Boxen prüfen, die du kaufen willst.',
   'footer.data': 'Boxmaße und Volumen: „Industrial Storage Container Dimensions“ von Daniel Rosehill, lizenziert unter CC BY 4.0.',
+  'footer.imprint': 'Impressum',
+  'footer.privacy': 'Datenschutz',
+  'footer.code': 'Quellcode (MIT)',
+  'legal.back': 'Zurück zum Rechner',
   'footer.local': 'Alles bleibt in deinem Browser. Nutze den Export für ein Backup.',
 
   'unit.mm': 'mm',

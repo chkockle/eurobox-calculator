@@ -8,6 +8,22 @@
   import BoxCatalog from './components/BoxCatalog.svelte';
   import SettingsPanel from './components/SettingsPanel.svelte';
   import Results from './components/Results.svelte';
+  import Legal from './components/Legal.svelte';
+  import { HAS_IMPRINT, REPO_URL } from './lib/legal';
+
+  // Tiny hash router for the legal pages; share links (#p=…) are consumed on load.
+  let hash = $state(location.hash);
+  const legalPage = $derived(
+    hash === '#impressum' && HAS_IMPRINT ? 'impressum' : hash === '#datenschutz' || hash === '#impressum' ? 'privacy' : null,
+  );
+  $effect(() => {
+    const onHash = () => {
+      hash = location.hash;
+      scrollTo(0, 0);
+    };
+    addEventListener('hashchange', onHash);
+    return () => removeEventListener('hashchange', onHash);
+  });
 
   let fileInput: HTMLInputElement;
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
@@ -99,22 +115,33 @@
   </nav>
 </header>
 
-<main class="layout">
-  <div class="inputs stack no-print">
-    <ShelfEditor />
-    <BoxCatalog />
-    <SettingsPanel />
-  </div>
-  <div class="results stack">
-    <Results />
-  </div>
-</main>
+{#if legalPage}
+  <main class="page">
+    <Legal page={legalPage} />
+  </main>
+{:else}
+  <main class="layout">
+    <div class="inputs stack no-print">
+      <ShelfEditor />
+      <BoxCatalog />
+      <SettingsPanel />
+    </div>
+    <div class="results stack">
+      <Results />
+    </div>
+  </main>
+{/if}
 
 <footer class="muted">
   <p>
     <a href="https://huggingface.co/datasets/danielrosehill/storage-container-dimensions" target="_blank" rel="noopener noreferrer">{t('footer.data')}</a>
   </p>
   <p class="no-print">{t('footer.local')}</p>
+  <nav class="row legal-links no-print">
+    {#if HAS_IMPRINT}<a href="#impressum">{t('footer.imprint')}</a>{/if}
+    <a href="#datenschutz">{t('footer.privacy')}</a>
+    <a href={REPO_URL} target="_blank" rel="noopener noreferrer">{t('footer.code')}</a>
+  </nav>
 </footer>
 
 {#if app.toast}
@@ -144,6 +171,8 @@
   }
   .inputs, .results { min-width: 0; }
   @media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+  .page { padding: 1rem clamp(1rem, 3vw, 2rem); }
+  .legal-links { gap: 1rem; }
   footer { padding: 1rem clamp(1rem, 3vw, 2rem) 2rem; font-size: 0.8rem; display: grid; gap: 0.25rem; max-width: 1600px; margin: 0 auto; }
   .toast {
     position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%);

@@ -185,6 +185,10 @@ export const en = {
 
   'note.sizes': 'About box sizes: the catalogue uses nominal outer dimensions. Real boxes of the same nominal size differ by a few millimetres between manufacturers, and are widest at the rim. The tolerance setting covers this; fits marked "tight" are worth checking against the data sheet of the boxes you plan to buy.',
   'footer.data': 'Box dimensions and capacities: “Industrial Storage Container Dimensions” by Daniel Rosehill, licensed CC BY 4.0.',
+  'footer.imprint': 'Legal notice',
+  'footer.privacy': 'Privacy',
+  'footer.code': 'Source code (MIT)',
+  'legal.back': 'Back to the calculator',
   'footer.local': 'Everything stays in your browser. Use Export to keep a backup.',
 
   'unit.mm': 'mm',

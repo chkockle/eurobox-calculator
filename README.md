@@ -96,3 +96,11 @@ Capacities are the dataset's conservative "typical" figures computed from intern
 vendors' nominal litres are often 5–10 % higher.
 
 See [BACKLOG.md](BACKLOG.md) for what is planned next.
+
+## License
+
+Code: [MIT](LICENSE). Box data: CC BY 4.0, see [Data](#data).
+
+The privacy notice (`#datenschutz`) and Impressum (`#impressum`) read their details from
+`src/lib/legal.ts`. The Impressum link only appears once address and email are filled in; set
+`analytics: true` there when Cloudflare Web Analytics is enabled.
