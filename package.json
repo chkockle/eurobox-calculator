@@ -20,7 +20,8 @@
     "svelte-check": "^4.7.6",
     "typescript": "~6.0.2",
     "vite": "^8.3.0",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.11",
+    "wrangler": "^4.134.0"
   },
   "dependencies": {
     "@threlte/core": "^8.6.0",

@@ -50,7 +50,7 @@
 
     <h3>3. Hosting durch Cloudflare</h3>
     <p>
-      Die Website wird über Cloudflare Pages ausgeliefert. Anbieter ist die Cloudflare, Inc., 101 Townsend St.,
+      Die Website wird über Cloudflare ausgeliefert. Anbieter ist die Cloudflare, Inc., 101 Townsend St.,
       San Francisco, CA 94107, USA. Beim Aufruf der Seite verarbeitet Cloudflare technisch notwendige Verbindungsdaten
       (IP-Adresse, Datum und Uhrzeit, aufgerufene Datei, Browser-Kennung), um die Seite auszuliefern und vor Angriffen zu
       schützen. Rechtsgrundlage ist Art. 6 Abs. 1 lit. f DSGVO; unser berechtigtes Interesse ist eine sichere und
@@ -116,7 +116,7 @@
 
     <h3>3. Hosting by Cloudflare</h3>
     <p>
-      The website is served by Cloudflare Pages, provided by Cloudflare, Inc., 101 Townsend St., San Francisco,
+      The website is served by Cloudflare, provided by Cloudflare, Inc., 101 Townsend St., San Francisco,
       CA 94107, USA. When you open the site, Cloudflare processes technically necessary connection data (IP address,
       date and time, requested file, browser identifier) to deliver the site and protect it against attacks. The legal
       basis is Art. 6(1)(f) GDPR; our legitimate interest is providing the website securely and reliably. Cloudflare

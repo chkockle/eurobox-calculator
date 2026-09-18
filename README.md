@@ -41,21 +41,21 @@ npm run check      # svelte-check + TypeScript
 npm run build      # static build into dist/
 ```
 
-## Deployment (Cloudflare Pages)
+## Deployment (Cloudflare Workers)
 
-The build is fully static; `dist/` can be served by any static host. It is deployed with
-Cloudflare Pages' Git integration:
+The build is fully static; `dist/` can be served by any static host. It is deployed as a Cloudflare
+Worker with static assets only (no server code), via Workers Builds connected to this repo:
 
 | Setting | Value |
 |---|---|
-| Framework preset | None (or Vite) |
 | Build command | `npm test && npm run build` |
-| Build output directory | `dist` |
+| Deploy command | `npx wrangler deploy` |
 | Node version | from `.node-version` (22) |
 
-Every push to `main` deploys to production; other branches get their own preview URL.
-Response headers (long-term caching for hashed assets, basic security headers) are in
-`public/_headers`.
+`wrangler.jsonc` points wrangler at `dist/`; its `name` must match the project name in the
+dashboard. Every push to `main` deploys. Response headers (long-term caching for hashed assets,
+basic security headers) are in `public/_headers`. Check a deploy locally with
+`npm run build && npx wrangler deploy --dry-run`.
 
 ### Structure
 
