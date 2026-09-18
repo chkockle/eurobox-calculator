@@ -1,26 +1,41 @@
 import { footprintKey } from '../model/catalog';
 import type { BoxType, Level, Settings, Shelf } from '../model/types';
 
+/** One box in a stack. */
+export interface StackItem {
+  boxId: string;
+  /** Height the solver reserves: box + lid + tolerance. */
+  h: number;
+  /** Nominal box height (without lid), for rendering. */
+  nomH: number;
+  lid: number;
+  capacityL: number;
+}
+
 /**
- * One "column" of a level: a strip across the shelf width filled with a single box
- * type in one orientation — `rows` deep (front to back) and `stack` high.
+ * One "column" of a level: a strip across the shelf width in one orientation — `rows` deep
+ * (front to back), each row the same stack of boxes. Usually one box type repeated; a mixed
+ * column stacks different heights of the same footprint (e.g. 22 cm on 17 cm).
  */
 export interface ColumnOption {
   key: string;
+  /** The bottom box (for single-type columns: the only box type). */
   boxId: string;
+  /** The stack from bottom to top. */
+  items: StackItem[];
+  /** Different box heights in one stack. */
+  mixed: boolean;
   /** false: the box's length runs along the shelf width; true: rotated 90°. */
   rotated: boolean;
-  /** Slot size including tolerance and lid (what the solver reserves). */
+  /** Slot size including tolerance (and lid); h = total stack height. */
   w: number;
   d: number;
   h: number;
   /** Space between rows front to back (gap + tolerance). */
   rowGap: number;
-  /** Nominal size along width/depth/height, for rendering (height without lid). */
+  /** Nominal size along width/depth, for rendering. */
   nomW: number;
   nomD: number;
-  nomH: number;
-  lid: number;
   stack: number;
   rows: number;
   count: number;
@@ -87,51 +102,147 @@ export function levelSpace(shelf: Shelf, level: Level): LevelSpace {
 
 const EPS = 1e-6;
 
-/** Build every feasible column (box type × orientation) for a level. */
+function stackItem(b: BoxType, s: Settings): StackItem {
+  const lid = s.lids && !b.lidded ? Math.max(0, s.lidHeight) : 0;
+  return { boxId: b.id, h: b.height + lid + Math.max(0, s.tolerance), nomH: b.height, lid, capacityL: b.capacityL ?? 0 };
+}
+
+interface Slot {
+  rotated: boolean;
+  nomW: number;
+  nomD: number;
+  w: number;
+  d: number;
+  rowGap: number;
+  rows: number;
+  used: number;
+  maxDepth: number;
+}
+
+/** Where a footprint fits across the width and how many rows fit front to back, per orientation. */
+function footprintSlots(length: number, width: number, space: LevelSpace, s: Settings): Slot[] {
+  const tol = Math.max(0, s.tolerance);
+  const support = Math.min(1, Math.max(0, s.minSupport));
+  const orientations: [number, number, boolean][] = [[length, width, false]];
+  if (length !== width) orientations.push([width, length, true]);
+  const out: Slot[] = [];
+  for (const [nomW, nomD, rotated] of orientations) {
+    const w = Math.ceil(nomW + tol);
+    if (w > space.width + EPS) continue;
+    // In depth the tolerance only matters between rows: a slightly deeper box just sits a few mm further forward.
+    const d = nomD;
+    const rowGap = Math.max(0, s.gap) + tol;
+    // The front box may stick out as far as allowed, while keeping minSupport of its depth on the board.
+    const reach = Math.min(Math.max(0, space.frontOverhang), nomD * (1 - support));
+    const maxDepth = space.depth + reach;
+    let rows = Math.floor((maxDepth + rowGap + EPS) / (d + rowGap));
+    if (!space.allowBehind) rows = Math.min(rows, 1);
+    if (rows < 1) continue;
+    out.push({ rotated, nomW, nomD, w, d, rowGap, rows, used: rows * d + (rows - 1) * rowGap, maxDepth });
+  }
+  return out;
+}
+
+function makeColumn(key: string, items: StackItem[], slot: Slot, space: LevelSpace, usableH: number, stackLimited: boolean): ColumnOption {
+  const stackH = items.reduce((sum, it) => sum + it.h, 0);
+  const cap = items.reduce((sum, it) => sum + it.capacityL, 0);
+  return {
+    key: `${key}|${slot.rotated ? 'r' : 'n'}`,
+    boxId: items[0].boxId,
+    items,
+    mixed: new Set(items.map((it) => it.boxId)).size > 1,
+    rotated: slot.rotated,
+    w: slot.w,
+    d: slot.d,
+    h: stackH,
+    rowGap: slot.rowGap,
+    nomW: slot.nomW,
+    nomD: slot.nomD,
+    stack: items.length,
+    rows: slot.rows,
+    count: slot.rows * items.length,
+    volume: slot.rows * cap,
+    overhang: Math.max(0, slot.used - space.depth),
+    spareDepth: slot.maxDepth - slot.used,
+    spareHeight: usableH - stackH,
+    stackLimited,
+  };
+}
+
+/**
+ * Best stack of boxes with the same footprint but different heights: most capacity within the
+ * height, at most `maxStack` boxes. Taller boxes end up at the bottom. Null if no mix beats
+ * the best single-height stack.
+ */
+export function bestMixedStack(items: StackItem[], height: number, maxStack: number): StackItem[] | null {
+  if (items.length < 2 || !Number.isFinite(height)) return null;
+  const H = Math.floor(height + EPS);
+  const hs = items.map((it) => Math.ceil(it.h - EPS));
+  const minH = Math.min(...hs);
+  if (minH <= 0 || minH > H) return null;
+  const K = Math.min(Number.isFinite(maxStack) ? maxStack : Infinity, Math.floor(H / minH));
+  const vals = items.map((it) => Math.round(it.capacityL * 10));
+  // best[c] after k layers: most capacity with at most k boxes and total height ≤ c.
+  let best = new Float64Array(H + 1);
+  const choice: Int16Array[] = [];
+  for (let k = 1; k <= K; k++) {
+    const next = Float64Array.from(best);
+    const pick = new Int16Array(H + 1).fill(-1);
+    for (let c = 0; c <= H; c++) {
+      for (let i = 0; i < items.length; i++) {
+        if (hs[i] <= c && best[c - hs[i]] + vals[i] > next[c]) {
+          next[c] = best[c - hs[i]] + vals[i];
+          pick[c] = i;
+        }
+      }
+    }
+    choice.push(pick);
+    best = next;
+  }
+  // Reconstruct from the top layer down.
+  const stack: StackItem[] = [];
+  let c = H;
+  for (let k = K - 1; k >= 0; k--) {
+    const i = choice[k][c];
+    if (i < 0) continue;
+    stack.push(items[i]);
+    c -= hs[i];
+  }
+  if (new Set(stack.map((it) => it.boxId)).size < 2) return null;
+  const total = stack.reduce((sum, it) => sum + it.capacityL, 0);
+  const bestUniform = Math.max(...items.map((it, i) => Math.min(maxStack, Math.floor(H / hs[i])) * it.capacityL));
+  if (total <= bestUniform + 0.05) return null;
+  return stack.sort((a, b) => b.nomH - a.nomH);
+}
+
+/** Build every feasible column (box type × orientation, plus mixed stacks) for a level. */
 export function columnOptions(space: LevelSpace, boxes: BoxType[], s: Settings): ColumnOption[] {
   const out: ColumnOption[] = [];
-  const tol = Math.max(0, s.tolerance);
-  const gap = Math.max(0, s.gap);
   const usableH = space.height - (space.needsClearance ? Math.max(0, s.topClearance) : 0);
-  const support = Math.min(1, Math.max(0, s.minSupport));
 
   for (const b of boxes) {
-    const lid = s.lids && !b.lidded ? Math.max(0, s.lidHeight) : 0;
-    const h = b.height + lid + tol;
-    const heightFits = Math.floor((usableH + EPS) / h);
+    const item = stackItem(b, s);
+    const heightFits = Math.floor((usableH + EPS) / item.h);
     const stack = Math.min(space.maxStack, heightFits);
     if (stack < 1) continue;
+    const items = Array.from({ length: stack }, () => item);
+    for (const slot of footprintSlots(b.length, b.width, space, s)) {
+      out.push(makeColumn(b.id, items, slot, space, usableH, Number.isFinite(heightFits) && heightFits > stack));
+    }
+  }
 
-    const orientations: [number, number, boolean][] = [[b.length, b.width, false]];
-    if (b.length !== b.width) orientations.push([b.width, b.length, true]);
-
-    for (const [nomW, nomD, rotated] of orientations) {
-      const w = Math.ceil(nomW + tol);
-      // In depth the tolerance only matters between rows: a slightly deeper box just sits a few mm further forward.
-      const d = nomD;
-      const rowGap = gap + tol;
-      if (w > space.width + EPS) continue;
-      // The front box may stick out as far as allowed, while keeping minSupport of its depth on the board.
-      const reach = Math.min(Math.max(0, space.frontOverhang), nomD * (1 - support));
-      const maxDepth = space.depth + reach;
-      let rows = Math.floor((maxDepth + rowGap + EPS) / (d + rowGap));
-      if (!space.allowBehind) rows = Math.min(rows, 1);
-      if (rows < 1) continue;
-      const used = rows * d + (rows - 1) * rowGap;
-      const count = rows * stack;
-      out.push({
-        key: `${b.id}|${rotated ? 'r' : 'n'}`,
-        boxId: b.id,
-        rotated,
-        w, d, h, rowGap,
-        nomW, nomD, nomH: b.height, lid,
-        stack, rows, count,
-        volume: count * (b.capacityL ?? 0),
-        overhang: Math.max(0, used - space.depth),
-        spareDepth: maxDepth - used,
-        spareHeight: usableH - stack * h,
-        stackLimited: Number.isFinite(heightFits) && heightFits > stack,
-      });
+  // Mixed stacks: same family and footprint, different heights.
+  const groups = new Map<string, BoxType[]>();
+  for (const b of boxes) {
+    const k = `${b.family}:${b.length}x${b.width}`;
+    groups.set(k, [...(groups.get(k) ?? []), b]);
+  }
+  for (const group of groups.values()) {
+    const mix = bestMixedStack(group.map((b) => stackItem(b, s)), usableH, space.maxStack);
+    if (!mix) continue;
+    const key = `mix:${mix.map((it) => it.boxId).join('+')}`;
+    for (const slot of footprintSlots(group[0].length, group[0].width, space, s)) {
+      out.push(makeColumn(key, mix, slot, space, usableH, false));
     }
   }
   return out;
@@ -197,7 +308,7 @@ export function makeCandidate(columns: ColumnOption[], width: number, gap: numbe
     spareHeight: sorted.length ? Math.min(...sorted.map((c) => c.spareHeight)) : 0,
     spareDepth: sorted.length ? Math.min(...sorted.map((c) => c.spareDepth)) : 0,
     overhang: sorted.length ? Math.max(...sorted.map((c) => c.overhang)) : 0,
-    boxIds: [...new Set(sorted.map((c) => c.boxId))],
+    boxIds: [...new Set(sorted.flatMap((c) => c.items.map((it) => it.boxId)))],
   };
 }
 
@@ -216,7 +327,7 @@ export function solveLevel(space: LevelSpace, boxes: BoxType[], s: Settings): Le
   };
 
   add(fillWidth(options, W, gap, 'volume'), 'maxVolume');
-  add(fillWidth(options, W, gap, 'count'), 'maxCount');
+  add(fillWidth(options.filter((o) => !o.mixed), W, gap, 'count'), 'maxCount');
 
   const boxFp = new Map(boxes.map((b) => [b.id, footprintKey(b)]));
   const groups = new Map<string, ColumnOption[]>();
@@ -224,7 +335,7 @@ export function solveLevel(space: LevelSpace, boxes: BoxType[], s: Settings): Le
   for (const o of options) {
     const fp = `fp:${boxFp.get(o.boxId)}`;
     groups.set(fp, [...(groups.get(fp) ?? []), o]);
-    perBox.set(`box:${o.boxId}`, [...(perBox.get(`box:${o.boxId}`) ?? []), o]);
+    if (!o.mixed) perBox.set(`box:${o.boxId}`, [...(perBox.get(`box:${o.boxId}`) ?? []), o]);
   }
   for (const [tag, opts] of groups) add(fillWidth(opts, W, gap, 'volume'), tag);
   for (const [tag, opts] of perBox) add(fillWidth(opts, W, gap, 'volume'), tag);

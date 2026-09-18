@@ -216,7 +216,7 @@
         {@const front = D + shift - r * (col.d + col.rowGap)}
         <rect x={x} y={front - col.d} width={col.nomW} height={col.nomD} rx="8" fill={boxColor(byId.get(col.boxId))} class="crate" />
         {#if r === 0}
-          <text x={x + col.nomW / 2} y={front - col.d / 2} class="code">{codes.get(col.boxId) ?? ''}{col.stack > 1 ? ` ×${col.stack}` : ''}</text>
+          <text x={x + col.nomW / 2} y={front - col.d / 2} class="code">{col.mixed ? col.items.map((it) => codes.get(it.boxId) ?? '').join('+') : `${codes.get(col.boxId) ?? ''}${col.stack > 1 ? ` ×${col.stack}` : ''}`}</text>
         {/if}
       {/each}
     {/each}

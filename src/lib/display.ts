@@ -37,10 +37,23 @@ export function candidateSummary(c: LevelCandidate, byId: Map<string, BoxType>):
         col.stack > 1 ? t('level.stackOf', { n: col.stack }) : '',
         col.rows > 1 ? t('level.rowsOf', { n: col.rows }) : '',
       ].filter(Boolean);
+      if (col.mixed) {
+        // "3 × 60×40 stack 22+17 cm (turned)"
+        const b = byId.get(col.boxId);
+        const heights = col.items.map((it) => fmtCm(it.nomH)).join(' + ');
+        const fp = b ? `${fmtCm(b.length)}×${fmtCm(b.width)}` : '';
+        const turned = col.rotated ? ` (${t('level.rotated')})` : '';
+        return t('level.mixedColumn', { n: n / col.stack, fp, heights }) + turned;
+      }
       return t('level.column', { n, box: boxName(byId.get(col.boxId)) }) + (extra.length ? ` (${extra.join(', ')})` : '');
     })
     .join(' + ');
 }
+
+const fmtCm = (mm: number) => {
+  const v = mm / 10;
+  return Number.isInteger(v) ? String(v) : v.toFixed(1);
+};
 
 const HUES: Record<string, number> = { '600×400': 212, '400×300': 160, '300×200': 38, '800×600': 275 };
 

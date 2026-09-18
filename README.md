@@ -12,8 +12,9 @@ stored in the browser.
 - **Shelf input**: presets (e.g. OBI Schwerlast-Steckregal XL 180 × 160 × 60), quick setup from
   outer dimensions (height, width, depth, boards, bays), then per-level clear height, stacking,
   "boxes behind boxes" and optional load limits. Multiple shelves per project.
-- **Accessibility**: by default every box is reachable from the front (one row, no stacking).
-  Stacking and rows behind each other are opt-in per level.
+- **Accessibility**: by default boxes stand in one row (no boxes behind others).
+  Stacking goes as high as the level allows (limit per level), including mixed heights of the same
+  footprint (e.g. 22 + 17 cm); rows behind each other are opt-in per level.
 - **Front overhang**: allowed per shelf up to a max. mm, while at least 2/3 (configurable) of the
   box depth must rest on the board.
 - **Box catalogue**: Euroboxes (60×40, 40×30, 30×20, 80×60), attached-lid containers and VDA KLT,

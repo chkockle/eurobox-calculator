@@ -73,24 +73,26 @@ export function placeBoxes(shelf: Shelf, plan: Plan, settings: Settings): Placed
         const shift = Math.max(0, depthUsed - D);
         for (let r = 0; r < col.rows; r++) {
           const slotFront = shift - r * (col.d + col.rowGap);
-          for (let s = 0; s < col.stack; s++) {
+          let y = bases[li];
+          col.items.forEach((it, s) => {
             out.push({
-              boxId: col.boxId,
+              boxId: it.boxId,
               levelIndex: li,
               bay,
               x: x + tol / 2,
-              y: bases[li] + s * col.h,
+              y,
               zFront: slotFront,
               w: col.nomW,
               d: col.nomD,
-              h: col.nomH,
-              lid: col.lid,
+              h: it.nomH,
+              lid: it.lid,
               overhang: r === 0 && shift > 0,
               hidden: r > 0 || s < col.stack - 1,
               row: r,
               tier: s,
             });
-          }
+            y += it.h;
+          });
         }
         x += col.w + gap + spread;
       }

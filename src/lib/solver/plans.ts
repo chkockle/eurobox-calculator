@@ -97,9 +97,11 @@ export function levelBoxes(level: Level, boxes: BoxType[]): BoxType[] {
 function candidateCostPerLitre(c: LevelCandidate, prices: Record<string, number>): number | null {
   let cost = 0;
   for (const col of c.columns) {
-    const p = prices[col.boxId];
-    if (p == null) return null;
-    cost += p * col.count;
+    for (const it of col.items) {
+      const p = prices[it.boxId];
+      if (p == null) return null;
+      cost += p * col.rows;
+    }
   }
   return c.volume > 0 ? cost / c.volume : null;
 }
@@ -136,7 +138,9 @@ export function buildPlan(
     let loadKg: number | null = null;
     if (c) {
       volume += c.volume * bays;
-      for (const col of c.columns) counts.set(col.boxId, (counts.get(col.boxId) ?? 0) + col.count * bays);
+      for (const col of c.columns) {
+        for (const it of col.items) counts.set(it.boxId, (counts.get(it.boxId) ?? 0) + col.rows * bays);
+      }
       if (c.overhang > 0) overhang = true;
       minSpare = Math.min(minSpare, c.spareWidth, c.spareHeight, c.spareDepth);
       if (settings.kgPerLitre != null) loadKg = c.volume * settings.kgPerLitre;

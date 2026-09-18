@@ -210,6 +210,7 @@ export const en = {
   'level.reset': 'Back to suggestion',
   'level.rotated': 'turned',
   'level.column': '{n} × {box}',
+  'level.mixedColumn': '{n} × stack {fp}: {heights} cm',
   'level.stackOf': '{n} high',
   'level.rowsOf': '{n} deep',
 

@@ -25,8 +25,10 @@ Ideas and follow-ups that are deliberately not in v1, roughly in priority order.
 
 ## Ideas
 
-- Mixed-height stacks (e.g. 32 + 17 cm in one stack) and mixed depths within one column
-  (a 40 cm box in front of a 20 cm box on a 60 cm board).
+- **Modular stacking across footprints**: a pair of 40×30 (or four 30×20) standing on a 60×40,
+  two 30×20 on a 40×30 — the Euro module sizes are designed for it (check the base profile when
+  mixing brands). Mixed heights of the same footprint are already supported.
+- Mixed depths within one column (a 40 cm box in front of a 20 cm box on a 60 cm board).
 - Per-box weight when full (instead of one kg/L value), box tare weight, and the boxes' own
   stacking load limits.
 - More shelf presets (IKEA IVAR / BROR, common Schulte / Tarifold Steckregale, Kallax-style cubes),

@@ -212,6 +212,7 @@ export const de: Record<MessageKey, string> = {
   'level.reset': 'Zurück zum Vorschlag',
   'level.rotated': 'gedreht',
   'level.column': '{n} × {box}',
+  'level.mixedColumn': '{n} × Stapel {fp}: {heights} cm',
   'level.stackOf': '{n} hoch',
   'level.rowsOf': '{n} tief',
 

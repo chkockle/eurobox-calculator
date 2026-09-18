@@ -6,7 +6,7 @@ import type { BoxType, Settings, Shelf } from '../model/types';
 import { parseProject, projectFromHash, shareHash } from '../state/persist';
 import { parseDecimal } from '../format';
 import { placeBoxes, shelfOffsets, shelfOuterWidth } from './geometry';
-import { columnOptions, fillWidth, levelSpace, solveLevel, type LevelSpace } from './level';
+import { bestMixedStack, columnOptions, fillWidth, levelSpace, solveLevel, type LevelSpace } from './level';
 import { basePlan, effectivePlan, rankPlans, solveShelf, suggestions } from './plans';
 
 const box = (id: string): BoxType => {
@@ -96,6 +96,40 @@ describe('levelSpace stacking', () => {
     const top = makeLevel(null, true);
     expect(columnOptions(levelSpace(shelf, top), b, DEFAULT_SETTINGS)[0].stack).toBe(1);
     expect(columnOptions(levelSpace(shelf, { ...top, maxStack: 4 }), b, DEFAULT_SETTINGS)[0].stack).toBe(4);
+  });
+});
+
+describe('mixed stacks', () => {
+  it('combines heights of one footprint when that fills the height better', () => {
+    // 400 mm usable: 2 × 170 = 340 (60.6 L), 220 + 170 = 390 (70.3 L), 1 × 320 (59.6 L)
+    const boxes = [box('euro-600x400x170'), box('euro-600x400x220'), box('euro-600x400x320')];
+    const opts = columnOptions(space({ height: 400, maxStack: 5 }), boxes, S);
+    const mixed = opts.filter((o) => o.mixed);
+    expect(mixed.length).toBeGreaterThan(0);
+    expect(mixed[0].items.map((it) => it.nomH)).toEqual([220, 170]); // taller at the bottom
+    const best = solveLevel(space({ height: 400, maxStack: 5 }), boxes, S).candidates[0];
+    expect(best.columns.every((c) => c.mixed)).toBe(true);
+    expect(best.boxIds.sort()).toEqual(['euro-600x400x170', 'euro-600x400x220']);
+  });
+
+  it('does not mix when a single height is as good, or when stacking is off', () => {
+    const items = [box('euro-600x400x200'), box('euro-600x400x400')].map((b) => ({ boxId: b.id, h: b.height, nomH: b.height, lid: 0, capacityL: b.capacityL! }));
+    expect(bestMixedStack(items, 400, 5)).toBeNull(); // 2 × 200 or 1 × 400 fill it exactly
+    const opts = columnOptions(space({ height: 400, maxStack: 1 }), [box('euro-600x400x170'), box('euro-600x400x220')], S);
+    expect(opts.some((o) => o.mixed)).toBe(false);
+  });
+
+  it('counts every box of a mixed stack in the plan and places them on top of each other', () => {
+    const shelf = { ...shelfFromQuick(PRESETS[0].input), levels: [{ ...makeLevel(430), maxStack: null }] };
+    const boxes = [box('euro-600x400x170'), box('euro-600x400x220')];
+    const sol = solveShelf(shelf, boxes, { prices: {}, settings: S });
+    const plan = basePlan(sol, 'maxVolume')!;
+    const col = plan.levels[0].candidate!.columns[0];
+    expect(col.mixed).toBe(true);
+    expect(plan.count).toBe(plan.levels[0].candidate!.columns.reduce((n, c) => n + c.rows * c.items.length, 0));
+    expect(plan.boxes.map((b) => b.boxId).sort()).toEqual(['euro-600x400x170', 'euro-600x400x220']);
+    const placed = placeBoxes(shelf, plan, S).filter((p) => p.x === placeBoxes(shelf, plan, S)[0].x);
+    expect(placed.map((p) => p.y)).toEqual([shelf.bottomOffset, shelf.bottomOffset + 220]);
   });
 });
 
