@@ -5,6 +5,10 @@
   // Must match the project name in the Cloudflare dashboard.
   "name": "eurobox-calculator",
   "compatibility_date": "2026-09-01",
+  // Serve on <name>.<subdomain>.workers.dev and give non-production branch builds
+  // (`wrangler versions upload`) their own preview URL.
+  "workers_dev": true,
+  "preview_urls": true,
   "assets": {
     "directory": "./dist"
   }
