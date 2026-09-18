@@ -17,8 +17,11 @@ stored in the browser.
   footprint (e.g. 22 + 17 cm); rows behind each other are opt-in per level.
 - **Front overhang**: allowed per shelf up to a max. mm, while at least 2/3 (configurable) of the
   box depth must rest on the board.
-- **Box catalogue**: Euroboxes (60×40, 40×30, 30×20, 80×60), attached-lid containers and VDA KLT,
+- **Box catalogue**: straight-walled Euroboxes (30×20, 40×30, 60×40, 80×60 in all common heights)
   plus your own boxes. Optional prices per box.
+- **Stacking overlap**: stacked Euroboxes sink into the box below (e.g. 11 mm for Auer, 14 mm for
+  Utz RAKO: box height minus the data sheet's stacking height). Set it in the box section; 0 by
+  default because it differs per manufacturer; not applied with separate lids.
 - **Box filters**: limit a shelf/bay or a single level to certain boxes (e.g. small boxes to keep
   small parts apart), and pick any alternative layout per level in the results.
 - **Suggestions**: most volume, most boxes, one box size throughout (choose which) and best price

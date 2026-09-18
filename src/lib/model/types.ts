@@ -1,6 +1,6 @@
 // All lengths in millimetres, capacities in litres, loads in kg.
 
-export type Family = 'euro' | 'alc' | 'klt' | 'custom';
+export type Family = 'euro' | 'custom';
 
 export interface BoxType {
   id: string;
@@ -15,7 +15,7 @@ export interface BoxType {
   capacityL: number | null;
   capacityLowL?: number | null;
   capacityHighL?: number | null;
-  /** True when the lid is integral (ALC) — no extra lid height is added. */
+  /** True when the lid is part of the box height (custom boxes) — no extra lid height is added. */
   lidded: boolean;
   /** Display name for custom boxes. */
   name?: string;
@@ -84,6 +84,12 @@ export interface Settings {
   gap: number;
   /** Space kept free above the top box so it can be lifted out. */
   topClearance: number;
+  /**
+   * How far a stacked box sinks into the rim of the box below (mm) — box height minus the
+   * manufacturer's "stacking height" (e.g. Auer 60×40×32: 320 − 309 = 11). Differs per
+   * manufacturer, so 0 by default. Not applied with separate lids.
+   */
+  stackOverlap: number;
   /** Boxes get separate lids (not applied to boxes with integral lids). */
   lids: boolean;
   lidHeight: number;

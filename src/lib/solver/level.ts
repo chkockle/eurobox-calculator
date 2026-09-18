@@ -34,6 +34,8 @@ export interface ColumnOption {
   h: number;
   /** Space between rows front to back (gap + tolerance). */
   rowGap: number;
+  /** How far each box sinks into the one below (interlocking rims). */
+  overlap: number;
   /** Nominal size along width/depth, for rendering. */
   nomW: number;
   nomD: number;
@@ -149,8 +151,18 @@ function footprintSlots(length: number, width: number, space: LevelSpace, s: Set
   return out;
 }
 
-function makeColumn(key: string, items: StackItem[], slot: Slot, space: LevelSpace, usableH: number, stackLimited: boolean): ColumnOption {
-  const stackH = items.reduce((sum, it) => sum + it.h, 0);
+/** Interlock between stacked boxes; boxes with a separate lid on top don't interlock. */
+function stackOverlap(s: Settings): number {
+  return s.lids ? 0 : Math.max(0, s.stackOverlap ?? 0);
+}
+
+/** Height of a stack: every box after the first sinks `overlap` into the one below. */
+function stackHeight(items: StackItem[], overlap: number): number {
+  return items.reduce((sum, it) => sum + it.h, 0) - Math.max(0, items.length - 1) * overlap;
+}
+
+function makeColumn(key: string, items: StackItem[], slot: Slot, space: LevelSpace, usableH: number, stackLimited: boolean, overlap: number): ColumnOption {
+  const stackH = stackHeight(items, overlap);
   const cap = items.reduce((sum, it) => sum + it.capacityL, 0);
   return {
     key: `${key}|${slot.rotated ? 'r' : 'n'}`,
@@ -162,6 +174,7 @@ function makeColumn(key: string, items: StackItem[], slot: Slot, space: LevelSpa
     d: slot.d,
     h: stackH,
     rowGap: slot.rowGap,
+    overlap,
     nomW: slot.nomW,
     nomD: slot.nomD,
     stack: items.length,
@@ -180,10 +193,11 @@ function makeColumn(key: string, items: StackItem[], slot: Slot, space: LevelSpa
  * height, at most `maxStack` boxes. Taller boxes end up at the bottom. Null if no mix beats
  * the best single-height stack.
  */
-export function bestMixedStack(items: StackItem[], height: number, maxStack: number): StackItem[] | null {
+export function bestMixedStack(items: StackItem[], height: number, maxStack: number, overlap = 0): StackItem[] | null {
   if (items.length < 2 || !Number.isFinite(height)) return null;
-  const H = Math.floor(height + EPS);
-  const hs = items.map((it) => Math.ceil(it.h - EPS));
+  // n boxes need Σh − (n−1)·overlap ≤ height  ⇔  Σ(h − overlap) ≤ height − overlap.
+  const H = Math.floor(height - overlap + EPS);
+  const hs = items.map((it) => Math.ceil(it.h - overlap - EPS));
   const minH = Math.min(...hs);
   if (minH <= 0 || minH > H) return null;
   const K = Math.min(Number.isFinite(maxStack) ? maxStack : Infinity, Math.floor(H / minH));
@@ -217,6 +231,7 @@ export function bestMixedStack(items: StackItem[], height: number, maxStack: num
   if (new Set(stack.map((it) => it.boxId)).size < 2) return null;
   const total = stack.reduce((sum, it) => sum + it.capacityL, 0);
   const bestUniform = Math.max(...items.map((it, i) => Math.min(maxStack, Math.floor(H / hs[i])) * it.capacityL));
+  // (H and hs are already reduced by the overlap, so this matches the uniform stacks above.)
   if (total <= bestUniform + 0.05) return null;
   return stack.sort((a, b) => b.nomH - a.nomH);
 }
@@ -225,15 +240,18 @@ export function bestMixedStack(items: StackItem[], height: number, maxStack: num
 export function columnOptions(space: LevelSpace, boxes: BoxType[], s: Settings): ColumnOption[] {
   const out: ColumnOption[] = [];
   const usableH = space.height - (space.needsClearance ? Math.max(0, s.topClearance) : 0);
+  const overlap = stackOverlap(s);
 
   for (const b of boxes) {
     const item = stackItem(b, s);
-    const heightFits = Math.floor((usableH + EPS) / item.h);
+    // n boxes need n·h − (n−1)·overlap ≤ usable height.
+    const ov = Math.min(overlap, item.h - 1);
+    const heightFits = usableH + EPS < item.h ? 0 : Math.floor((usableH - ov + EPS) / (item.h - ov));
     const stack = Math.min(space.maxStack, heightFits);
     if (stack < 1) continue;
     const items = Array.from({ length: stack }, () => item);
     for (const slot of footprintSlots(b.length, b.width, space, s)) {
-      out.push(makeColumn(b.id, items, slot, space, usableH, Number.isFinite(heightFits) && heightFits > stack));
+      out.push(makeColumn(b.id, items, slot, space, usableH, Number.isFinite(heightFits) && heightFits > stack, ov));
     }
   }
 
@@ -244,11 +262,11 @@ export function columnOptions(space: LevelSpace, boxes: BoxType[], s: Settings):
     groups.set(k, [...(groups.get(k) ?? []), b]);
   }
   for (const group of groups.values()) {
-    const mix = bestMixedStack(group.map((b) => stackItem(b, s)), usableH, space.maxStack);
+    const mix = bestMixedStack(group.map((b) => stackItem(b, s)), usableH, space.maxStack, overlap);
     if (!mix) continue;
     const key = `mix:${mix.map((it) => it.boxId).join('+')}`;
     for (const slot of footprintSlots(group[0].length, group[0].width, space, s)) {
-      out.push(makeColumn(key, mix, slot, space, usableH, false));
+      out.push(makeColumn(key, mix, slot, space, usableH, false, overlap));
     }
   }
   return out;

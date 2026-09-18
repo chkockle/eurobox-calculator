@@ -6,6 +6,7 @@ export const DEFAULT_SETTINGS: Settings = {
   tolerance: 5,
   gap: 10,
   topClearance: 30,
+  stackOverlap: 0,
   lids: false,
   lidHeight: 15,
   minSupport: 2 / 3,

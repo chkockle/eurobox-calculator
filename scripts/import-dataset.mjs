@@ -11,10 +11,10 @@ const DATASET_URL =
   'https://huggingface.co/datasets/danielrosehill/storage-container-dimensions/resolve/main/containers.csv';
 const OUT = new URL('../src/lib/data/catalog.generated.ts', import.meta.url);
 
+// Only straight-walled Euro stacking containers — attached-lid containers and VDA KLTs are
+// different products and not part of this calculator.
 const FAMILY = {
   euro_stacking_container: 'euro',
-  attached_lid_container: 'alc',
-  vda_klt_container: 'klt',
 };
 
 /** Minimal RFC 4180 CSV parser (quoted fields, embedded commas/newlines). */

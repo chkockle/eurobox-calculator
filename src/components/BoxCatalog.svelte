@@ -7,7 +7,6 @@
   import { boxColor, boxName } from '../lib/display';
   import NumField from './NumField.svelte';
 
-  const families: Family[] = ['euro', 'alc', 'klt'];
 
   function groups(family: Family): [string, BoxType[]][] {
     const map = new Map<string, BoxType[]>();
@@ -122,27 +121,20 @@
     <label class="row prices-toggle"><input type="checkbox" bind:checked={app.showPrices} /> {t('boxes.showPrices')}</label>
   </div>
 
-  {#each families as family (family)}
-    {@const fams = groups(family)}
-    {#if family === 'euro'}
-      <div class="stack">
-        <h3>{t('boxes.family.euro')}</h3>
-        {#each fams as [fp, list] (fp)}
-          {@render footprintGroup(fp, list, countIn(list) > 0 || fp === '600×400' || fp === '400×300')}
-        {/each}
-      </div>
-    {:else}
-      <details class="box">
-        <summary>
-          {t(`boxes.family.${family}` as const)}
-          <span class="muted count">{t('boxes.selected', { n: countIn(fams.flatMap(([, l]) => l)), total: fams.flatMap(([, l]) => l).length })}</span>
-        </summary>
-        <div class="stack">
-          {#each fams as [fp, list] (fp)}{@render footprintGroup(fp, list, true)}{/each}
-        </div>
-      </details>
-    {/if}
-  {/each}
+  <div class="overlap">
+    <NumField
+      label={t('settings.stackOverlap')}
+      unit="mm"
+      bind:value={app.project.settings.stackOverlap}
+      hint={app.project.settings.lids ? t('settings.stackOverlapLids') : t('settings.stackOverlapHint')}
+    />
+  </div>
+
+  <div class="stack">
+    {#each groups('euro') as [fp, list] (fp)}
+      {@render footprintGroup(fp, list, countIn(list) > 0 || fp === '600×400' || fp === '400×300')}
+    {/each}
+  </div>
 
   <details class="box" open={app.project.customBoxes.length > 0 || undefined}>
     <summary>{t('boxes.family.custom')}</summary>
@@ -178,6 +170,7 @@
 <style>
   .between { justify-content: space-between; align-items: flex-start; }
   .prices-toggle { font-size: 0.85rem; white-space: nowrap; }
+  .overlap { max-width: 26rem; }
   .fp { border-top: 1px solid var(--border); padding-top: 0.5rem; }
   .fp > summary { display: flex; gap: 0.6rem; align-items: baseline; font-weight: 500; }
   .count { font-size: 0.8rem; font-weight: 400; }
@@ -199,5 +192,4 @@
   .custom { display: grid; gap: 0.2rem; justify-items: center; }
   .field { display: flex; flex-direction: column; gap: 0.2rem; }
   .label { font-size: 0.85rem; font-weight: 500; }
-  details.box > summary .count { margin-left: 0.4rem; }
 </style>

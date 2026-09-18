@@ -16,7 +16,7 @@ const box = (id: string): BoxType => {
   return b;
 };
 
-const S: Settings = { ...DEFAULT_SETTINGS, tolerance: 0, gap: 0, topClearance: 0 };
+const S: Settings = { ...DEFAULT_SETTINGS, tolerance: 0, gap: 0, topClearance: 0, stackOverlap: 0 };
 
 const space = (over: Partial<LevelSpace> = {}): LevelSpace => ({
   width: 1200, depth: 400, height: 400, frontOverhang: 0, sideOverhang: 0, maxStack: 1, allowBehind: false, needsClearance: true, ...over,
@@ -66,7 +66,8 @@ describe('columnOptions', () => {
     expect(columnOptions(space({ width: 605 }), [b], { ...S, tolerance: 5 })).toHaveLength(1);
     // Lid of 15 + 320 exceeds 330
     expect(columnOptions(space({ height: 330 }), [b], { ...S, lids: true })).toHaveLength(0);
-    expect(columnOptions(space({ height: 330 }), [box('alc-600x400x310')], { ...S, lids: true })).toHaveLength(1);
+    const lidded: BoxType = { id: 'c1', family: 'custom', length: 600, width: 400, height: 310, capacityL: 55, lidded: true };
+    expect(columnOptions(space({ height: 330 }), [lidded], { ...S, lids: true })).toHaveLength(1);
   });
 
   it('fills an open top without height limit with the tallest box, stacked up to the limit', () => {
@@ -85,7 +86,7 @@ describe('levelSpace stacking', () => {
   const shelf = shelfFromQuick(PRESETS[0].input);
   it('stacks as many as fit when no limit is set, and respects a set maximum', () => {
     const b = [box('euro-400x300x150')];
-    const s = { ...DEFAULT_SETTINGS }; // 5 mm tolerance, 30 mm top clearance
+    const s = { ...DEFAULT_SETTINGS, stackOverlap: 0 }; // 5 mm tolerance, 30 mm top clearance
     const level = { ...makeLevel(520), maxStack: null };
     expect(columnOptions(levelSpace(shelf, level), b, s)[0].stack).toBe(3); // 3 × 155 ≤ 490
     expect(columnOptions(levelSpace(shelf, { ...level, maxStack: 2 }), b, s)[0].stack).toBe(2);
@@ -97,6 +98,28 @@ describe('levelSpace stacking', () => {
     const top = makeLevel(null, true);
     expect(columnOptions(levelSpace(shelf, top), b, DEFAULT_SETTINGS)[0].stack).toBe(1);
     expect(columnOptions(levelSpace(shelf, { ...top, maxStack: 4 }), b, DEFAULT_SETTINGS)[0].stack).toBe(4);
+  });
+});
+
+describe('stacking overlap', () => {
+  it('lets boxes sink into the rim below, so more fit on top of each other', () => {
+    const b = [box('euro-600x400x120')];
+    // 350 mm: without overlap 2 × 120; with 15 mm each extra box adds 105 → 120 + 105 + 105 = 330
+    expect(columnOptions(space({ height: 350, maxStack: 9 }), b, S)[0].stack).toBe(2);
+    const withOverlap = columnOptions(space({ height: 350, maxStack: 9 }), b, { ...S, stackOverlap: 15 })[0];
+    expect(withOverlap.stack).toBe(3);
+    expect(withOverlap.h).toBe(330);
+    // Lids sit between the boxes: no interlock.
+    expect(columnOptions(space({ height: 400, maxStack: 9 }), b, { ...S, stackOverlap: 15, lids: true, lidHeight: 15 })[0].stack).toBe(2);
+  });
+
+  it('places stacked boxes overlapping in 3D', () => {
+    const shelf = { ...shelfFromQuick(PRESETS[0].input), levels: [{ ...makeLevel(350), maxStack: null }] };
+    const settings = { ...S, stackOverlap: 15 };
+    const sol = solveShelf(shelf, [box('euro-600x400x120')], { prices: {}, settings });
+    const placed = placeBoxes(shelf, basePlan(sol, 'maxVolume')!, settings);
+    const ys = [...new Set(placed.map((p) => p.y))].sort((a, b) => a - b);
+    expect(ys.map((y) => y - shelf.bottomOffset)).toEqual([0, 105, 210]);
   });
 });
 

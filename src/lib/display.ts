@@ -6,8 +6,7 @@ import type { LevelCandidate } from './solver/level';
 export function boxName(b: BoxType | undefined): string {
   if (!b) return '?';
   if (b.family === 'custom' && b.name) return `${b.name} (${boxDims(b)})`;
-  const prefix = b.family === 'alc' ? 'ALC ' : b.family === 'klt' ? 'KLT ' : '';
-  return prefix + boxDims(b);
+  return boxDims(b);
 }
 
 export function planLabel(key: string, byId: Map<string, BoxType>): string {
@@ -62,7 +61,7 @@ export function boxColor(b: BoxType | undefined): string {
   if (!b) return '#888';
   const fp = `${b.length}×${b.width}`;
   const hue = b.family === 'custom' ? 330 : HUES[fp] ?? 0;
-  const sat = b.family === 'alc' ? 45 : b.family === 'klt' ? 30 : 60;
+  const sat = 60;
   const light = 68 - Math.min(30, (b.height / 470) * 30);
   return `hsl(${hue}, ${sat}%, ${Math.round(light)}%)`;
 }

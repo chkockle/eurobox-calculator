@@ -97,7 +97,7 @@ export function placeBoxes(shelf: Shelf, plan: Plan, settings: Settings): Placed
               row: r,
               tier: s,
             });
-            y += it.h;
+            y += it.h - col.overlap;
           });
         }
         x += col.w + gap + spread;

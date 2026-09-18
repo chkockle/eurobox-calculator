@@ -98,6 +98,7 @@ export function parseProject(input: unknown): Project {
       tolerance: Math.max(0, num(s.tolerance, DEFAULT_SETTINGS.tolerance)),
       gap: Math.max(0, num(s.gap, DEFAULT_SETTINGS.gap)),
       topClearance: Math.max(0, num(s.topClearance, DEFAULT_SETTINGS.topClearance)),
+      stackOverlap: Math.max(0, num(s.stackOverlap, DEFAULT_SETTINGS.stackOverlap)),
       lids: s.lids === true,
       lidHeight: Math.max(0, num(s.lidHeight, DEFAULT_SETTINGS.lidHeight)),
       minSupport: Math.min(1, Math.max(0.5, num(s.minSupport, DEFAULT_SETTINGS.minSupport))),
