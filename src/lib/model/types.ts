@@ -23,8 +23,11 @@ export interface BoxType {
 
 export interface Level {
   id: string;
-  /** Clear height: top of this board to the underside of the next board (or usable height above an open top). */
-  clearHeight: number;
+  /**
+   * Clear height: top of this board to the underside of the next board. On an open top
+   * (the space on top of the shelf) it is the usable height, or null for no limit.
+   */
+  clearHeight: number | null;
   /** True for the space on top of the highest board (nothing above it). */
   openTop: boolean;
   enabled: boolean;
@@ -74,6 +77,8 @@ export interface Settings {
   /** Expected weight of the contents per litre of capacity, as given by the user. */
   kgPerLitre: number | null;
   currency: string;
+  /** Gap between neighbouring shelves in the "all shelves" view. */
+  shelfGap: number;
 }
 
 export type Objective = 'volume' | 'count' | 'fewestTypes' | 'value';

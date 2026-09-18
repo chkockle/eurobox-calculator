@@ -2,34 +2,57 @@
   import { fmt, money, t } from '../lib/i18n/index.svelte';
   import { app } from '../lib/state/app.svelte';
   import { allBoxes } from '../lib/model/catalog';
-  import type { Objective, Project, Shelf } from '../lib/model/types';
+  import type { Objective, Project, Shelf, ShelfSelection } from '../lib/model/types';
   import { effectivePlan, rankPlans, solveShelf, TIGHT_MM, type Plan } from '../lib/solver/plans';
   import type { LevelCandidate } from '../lib/solver/level';
-  import { placeBoxes } from '../lib/solver/geometry';
+  import { placeBoxes, shelfOuterWidth } from '../lib/solver/geometry';
   import { boxColor, boxName, candidateSummary, planLabel } from '../lib/display';
+  import type { SceneShelf } from './ShelfScene.svelte';
+  import ShoppingList, { type ShoppingTotals } from './ShoppingList.svelte';
   // three.js is most of the bundle — load the 3D view separately so the form appears first.
   const scene3d = import('./Scene3D.svelte');
 
   const objectives: Objective[] = ['volume', 'count', 'fewestTypes', 'value'];
 
-  const shelf = $derived(app.project.shelves[app.activeShelf] as Shelf | undefined);
   const catalog = $derived(allBoxes(app.project));
   const byId = $derived(new Map(catalog.map((b) => [b.id, b])));
   const settings = $derived($state.snapshot(app.project.settings) as Project['settings']);
   const prices = $derived($state.snapshot(app.project.prices) as Record<string, number>);
 
-  const solution = $derived.by(() => {
-    if (!shelf) return null;
+  // Solve every shelf (≈10 ms each). Ranking and manual level choices are applied on top,
+  // so switching the objective or a level choice does not re-solve.
+  const solved = $derived.by(() => {
     const enabled = new Set(app.project.enabledBoxIds);
     const boxes = $state.snapshot(catalog.filter((b) => enabled.has(b.id)));
-    return solveShelf($state.snapshot(shelf) as Shelf, boxes, { prices, settings });
+    const solveSettings = { ...settings, shelfGap: 0 }; // the gap only affects the view
+    return app.project.shelves.map((s) => {
+      const shelf = $state.snapshot(s) as Shelf;
+      return { shelf, solution: solveShelf(shelf, boxes, { prices, settings: solveSettings }) };
+    });
   });
 
-  const ranked = $derived(solution ? rankPlans(solution.plans, app.project.objective) : []);
-  const selection = $derived(shelf ? app.project.selection[shelf.id] : undefined);
-  const basePlan = $derived(ranked.find((p) => p.key === selection?.plan) ?? ranked[0]);
-  const plan = $derived(shelf && solution ? effectivePlan(shelf, solution, ranked, selection, prices, settings) : null);
+  const computed = $derived(
+    solved.map(({ shelf, solution }) => {
+      const ranked = rankPlans(solution.plans, app.project.objective);
+      const selection = $state.snapshot(app.project.selection[shelf.id]) as ShelfSelection | undefined;
+      const basePlan = ranked.find((p) => p.key === selection?.plan) ?? ranked[0];
+      const plan = effectivePlan(shelf, solution, ranked, selection, prices, settings);
+      return { shelf, solution, ranked, selection, basePlan, plan };
+    }),
+  );
+
+  const current = $derived(computed[app.activeShelf]);
+  const shelf = $derived(current?.shelf);
+  const solution = $derived(current?.solution);
+  const ranked = $derived(current?.ranked ?? []);
+  const selection = $derived(current?.selection);
+  const basePlan = $derived(current?.basePlan);
+  const plan = $derived(current?.plan ?? null);
   const customised = $derived(!!selection && Object.keys(selection.overrides).length > 0);
+  const multi = $derived(computed.length > 1);
+
+  let scopeChoice = $state<'shelf' | 'all'>('shelf');
+  const scope = $derived(multi ? scopeChoice : 'shelf');
 
   const shown = $derived.by(() => {
     const top = ranked.slice(0, 6);
@@ -38,9 +61,60 @@
   });
 
   const hasPrices = $derived(Object.keys(prices).length > 0);
-  const codes = $derived(new Map((plan?.boxes ?? []).map((b, i) => [b.boxId, String.fromCharCode(65 + (i % 26))])));
-  const placed = $derived(shelf && plan ? placeBoxes($state.snapshot(shelf) as Shelf, plan, settings) : []);
-  let highlight = $state<number | null>(null);
+
+  function totalsOf(plans: (Plan | null)[]): ShoppingTotals {
+    const counts = new Map<string, number>();
+    let volume = 0;
+    let loadKg: number | null = settings.kgPerLitre != null ? 0 : null;
+    for (const p of plans) {
+      if (!p) continue;
+      volume += p.volume;
+      if (loadKg != null && p.totalLoadKg != null) loadKg += p.totalLoadKg;
+      for (const b of p.boxes) counts.set(b.boxId, (counts.get(b.boxId) ?? 0) + b.count);
+    }
+    const boxes = [...counts]
+      .map(([boxId, count]) => ({ boxId, count, price: prices[boxId] ?? null }))
+      .sort((a, b) => b.count - a.count || a.boxId.localeCompare(b.boxId));
+    const priced = boxes.filter((b) => b.price != null);
+    return {
+      boxes,
+      count: boxes.reduce((s, b) => s + b.count, 0),
+      volume,
+      cost: priced.length ? priced.reduce((s, b) => s + b.count * b.price!, 0) : null,
+      costComplete: boxes.length > 0 && priced.length === boxes.length,
+      loadKg,
+    };
+  }
+
+  const shelfName = (s: Shelf, i: number) => s.name || t('shelf.defaultName', { n: i + 1 });
+
+  const allTotals = $derived(totalsOf(computed.map((c) => c.plan)));
+  const totals = $derived(scope === 'all' ? allTotals : totalsOf([plan]));
+  const perShelf = $derived(
+    scope === 'all' ? computed.map((c, i) => ({ ...totalsOf([c.plan]), name: shelfName(c.shelf, i) })) : [],
+  );
+  const loadWarnings = $derived(
+    computed
+      .map((c, i) => ({ c, i }))
+      .filter(({ c, i }) => (scope === 'all' || i === app.activeShelf) && c.plan?.overloadTotal && c.shelf.maxTotalLoadKg != null)
+      .map(({ c, i }) => `${shelfName(c.shelf, i)}: ${t('shop.overloadTotal', { max: fmt(c.shelf.maxTotalLoadKg!) })}`),
+  );
+
+  // Letter codes are shared by all shelves, so a box type has the same letter everywhere.
+  const codes = $derived(new Map(allTotals.boxes.map((b, i) => [b.boxId, String.fromCharCode(65 + (i % 26))])));
+
+  const sceneItems = $derived.by((): SceneShelf[] => {
+    const list = scope === 'all' ? computed : current ? [current] : [];
+    let x = 0;
+    return list.map((c) => {
+      const item = { id: c.shelf.id, shelf: c.shelf, placed: c.plan ? placeBoxes(c.shelf, c.plan, settings) : [], x0: x };
+      x += shelfOuterWidth(c.shelf) + Math.max(0, settings.shelfGap);
+      return item;
+    });
+  });
+
+  let hoveredLevel = $state<number | null>(null);
+  const highlight = $derived(shelf && hoveredLevel != null ? { shelfId: shelf.id, level: hoveredLevel } : null);
 
   function selectPlan(key: string) {
     if (!shelf) return;
@@ -49,11 +123,11 @@
 
   function setLevel(levelId: string, index: number, sig: string) {
     if (!shelf || !basePlan) return;
-    const current = app.project.selection[shelf.id] ?? { plan: basePlan.key, overrides: {} };
+    const sel = app.project.selection[shelf.id] ?? { plan: basePlan.key, overrides: {} };
     const baseSig = basePlan.levels[index]?.candidate?.sig ?? '';
-    if (sig === baseSig) delete current.overrides[levelId];
-    else current.overrides[levelId] = sig;
-    app.project.selection[shelf.id] = current;
+    if (sig === baseSig) delete sel.overrides[levelId];
+    else sel.overrides[levelId] = sig;
+    app.project.selection[shelf.id] = sel;
   }
 
   function resetLevel(levelId: string) {
@@ -74,29 +148,6 @@
   }
   function notFrontAccessible(c: LevelCandidate | null): boolean {
     return !!c && c.columns.some((col) => col.rows > 1 || col.stack > 1);
-  }
-
-  const lidCount = $derived(
-    settings.lids && plan ? plan.boxes.reduce((s, b) => s + (byId.get(b.boxId)?.lidded ? 0 : b.count), 0) : 0,
-  );
-
-  let copied = $state(false);
-  async function copyList() {
-    if (!plan) return;
-    const lines = plan.boxes.map((b) => {
-      const price = b.price != null ? ` × ${money(b.price, settings.currency)} = ${money(b.price * b.count, settings.currency)}` : '';
-      return `${codes.get(b.boxId)}  ${b.count} × ${boxName(byId.get(b.boxId))}${price}`;
-    });
-    if (lidCount) lines.push(t('shop.lids', { n: lidCount }));
-    lines.push(`${t('shop.volume')}: ${fmt(plan.volume)} L`);
-    if (plan.cost != null) lines.push(`${t('shop.total')}: ${costLine(plan)}`);
-    try {
-      await navigator.clipboard.writeText(lines.join('\n'));
-      copied = true;
-      setTimeout(() => (copied = false), 1500);
-    } catch {
-      // clipboard blocked — nothing else to do
-    }
   }
 
   const levelOrder = $derived(shelf ? shelf.levels.map((_, i) => i).reverse() : []);
@@ -132,7 +183,10 @@
 {:else}
   <section class="card stack no-print" aria-labelledby="obj-h">
     <div class="row between">
-      <h2 id="obj-h">{t('results.objective')}</h2>
+      <h2 id="obj-h">
+        {t('results.objective')}
+        {#if multi}<span class="muted plan-name">— {t('results.suggestionsFor', { name: shelfName(shelf, app.activeShelf) })}</span>{/if}
+      </h2>
       <div class="seg" role="radiogroup" aria-label={t('results.objective')}>
         {#each objectives as o (o)}
           <button
@@ -179,20 +233,40 @@
     <section class="card stack" aria-labelledby="view-h">
       <div class="row between">
         <h2 id="view-h">
-          {t('view.title')}: {shelf.name}
-          <span class="muted plan-name">— {planLabel(plan.key, byId)}{customised ? ` (${t('plan.custom')})` : ''}</span>
+          {#if scope === 'all'}
+            {t('view.title')}: {t('scope.all', { n: computed.length })}
+          {:else}
+            {t('view.title')}: {shelf.name}
+            <span class="muted plan-name">— {planLabel(plan.key, byId)}{customised ? ` (${t('plan.custom')})` : ''}</span>
+          {/if}
         </h2>
-        <span class="num"><strong>{fmt(plan.volume)} L</strong> · {t('plan.boxes', { n: plan.count })}</span>
+        <span class="num"><strong>{fmt(totals.volume)} L</strong> · {t('plan.boxes', { n: totals.count })}</span>
       </div>
+
+      {#if multi}
+        <div class="row no-print">
+          <div class="seg" role="group" aria-label={t('view.title')}>
+            <button class:on={scope === 'shelf'} aria-pressed={scope === 'shelf'} onclick={() => (scopeChoice = 'shelf')}>{t('scope.shelf')}</button>
+            <button class:on={scope === 'all'} aria-pressed={scope === 'all'} onclick={() => (scopeChoice = 'all')}>{t('scope.all', { n: computed.length })}</button>
+          </div>
+          {#if scope === 'all'}
+            <label class="row gap-field">
+              <span>{t('view.shelfGap')}</span>
+              <input type="number" min="0" step="10" bind:value={app.project.settings.shelfGap} />
+              <span class="muted">mm</span>
+            </label>
+          {/if}
+        </div>
+      {/if}
 
       {#await scene3d}
         <div class="scene-loading"></div>
       {:then { default: Scene3D }}
-        <Scene3D shelf={$state.snapshot(shelf) as Shelf} {placed} {byId} {codes} {highlight} />
+        <Scene3D items={sceneItems} {byId} {codes} {highlight} />
       {/await}
 
       <div class="legend row">
-        {#each plan.boxes as b (b.boxId)}
+        {#each totals.boxes as b (b.boxId)}
           <span class="row legend-item">
             <span class="swatch" style:background={boxColor(byId.get(b.boxId))}></span>
             <strong>{codes.get(b.boxId)}</strong>
@@ -203,7 +277,7 @@
     </section>
 
     <section class="card stack" aria-labelledby="levels-h">
-      <h2 id="levels-h">{t('levels.title')}</h2>
+      <h2 id="levels-h">{t('levels.title')}{#if multi} <span class="muted plan-name">— {shelfName(shelf, app.activeShelf)}</span>{/if}</h2>
       <ol class="level-list">
         {#each levelOrder as i (shelf.levels[i].id)}
           {@const level = shelf.levels[i]}
@@ -213,15 +287,15 @@
           {@const bestVolume = result?.candidates[0]?.volume ?? 0}
           <li
             class="level"
-            onmouseenter={() => (highlight = i)}
-            onmouseleave={() => (highlight = null)}
-            onfocusin={() => (highlight = i)}
-            onfocusout={() => (highlight = null)}
+            onmouseenter={() => (hoveredLevel = i)}
+            onmouseleave={() => (hoveredLevel = null)}
+            onfocusin={() => (hoveredLevel = i)}
+            onfocusout={() => (hoveredLevel = null)}
           >
             <div class="row between">
               <h3>
                 {level.openTop ? t('level.topTitle') : t('level.title', { n: i + 1 })}
-                <span class="muted">· {t('level.clear', { h: fmt(level.clearHeight) })}</span>
+                <span class="muted">· {level.clearHeight == null ? t('level.clearNoLimit') : t('level.clear', { h: fmt(level.clearHeight) })}</span>
               </h3>
               {#if c}<span class="num">{fmt(c.volume * shelf.bays)} L</span>{/if}
             </div>
@@ -249,9 +323,14 @@
                   {#if c}
                     <div class="row badges">
                       <span class="badge" class:warn={c.spareWidth < TIGHT_MM}>{t('level.spareWidth', { mm: fmt(c.spareWidth) })}</span>
-                      <span class="badge" class:warn={c.spareHeight < TIGHT_MM}>{t('level.spareHeight', { mm: fmt(c.spareHeight + (level.openTop ? 0 : settings.topClearance)) })}</span>
+                      {#if Number.isFinite(c.spareHeight)}
+                        <span class="badge" class:warn={c.spareHeight < TIGHT_MM}>{t('level.spareHeight', { mm: fmt(c.spareHeight + (level.openTop ? 0 : settings.topClearance)) })}</span>
+                      {/if}
                       {#if c.overhang > 0}<span class="badge warn">{t('level.overhang', { mm: fmt(c.overhang) })}</span>{/if}
                       {#if notFrontAccessible(c)}<span class="badge">{t('badge.hidden')}</span>{/if}
+                      {#if c.columns.some((col) => col.stackLimited)}
+                        <span class="badge warn" title={t('level.stackLimitedHint')}>{t('level.stackLimited', { n: level.maxStack })}</span>
+                      {/if}
                       {#if lp.loadKg != null}
                         <span class="badge" class:danger={lp.overload}>
                           {level.maxLoadKg != null
@@ -280,53 +359,7 @@
     </section>
 
     <section class="card stack" aria-labelledby="shop-h">
-      <div class="row between">
-        <h2 id="shop-h">{t('shop.title')}</h2>
-        <button class="no-print" onclick={copyList}>{copied ? t('shop.copied') : t('shop.copy')}</button>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th></th>
-              <th>{t('shop.box')}</th>
-              <th class="r">{t('shop.count')}</th>
-              <th class="r">{t('shop.unit')}</th>
-              <th class="r">{t('shop.sum')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each plan.boxes as b (b.boxId)}
-              <tr>
-                <td><span class="swatch" style:background={boxColor(byId.get(b.boxId))}></span> <strong>{codes.get(b.boxId)}</strong></td>
-                <td>{boxName(byId.get(b.boxId))}</td>
-                <td class="r num">{b.count}</td>
-                <td class="r num">{b.price != null ? money(b.price, settings.currency) : '–'}</td>
-                <td class="r num">{b.price != null ? money(b.price * b.count, settings.currency) : '–'}</td>
-              </tr>
-            {/each}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td></td>
-              <td>{t('shop.total')}{#if lidCount} <small class="muted">({t('shop.lids', { n: lidCount })})</small>{/if}</td>
-              <td class="r num">{plan.count}</td>
-              <td></td>
-              <td class="r num">{plan.cost != null ? costLine(plan) : '–'}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-      <p class="row">
-        <span>{t('shop.volume')}: <strong class="num">{fmt(plan.volume)} L</strong></span>
-        {#if plan.totalLoadKg != null}
-          <span>· {t('shop.load')}: <strong class="num">≈ {fmt(plan.totalLoadKg)} kg</strong></span>
-        {/if}
-      </p>
-      {#if plan.overloadTotal && shelf.maxTotalLoadKg != null}
-        <p class="badge danger">{t('shop.overloadTotal', { max: fmt(shelf.maxTotalLoadKg) })}</p>
-      {/if}
-      <small>{t('note.sizes')}</small>
+      <ShoppingList {totals} {byId} {codes} {settings} {perShelf} warnings={loadWarnings} />
     </section>
   {/if}
 {/if}
@@ -349,6 +382,8 @@
   .badges { gap: 0.3rem; }
   .legend { gap: 0.4rem 1rem; font-size: 0.85rem; }
   .legend-item { gap: 0.35rem; }
+  .gap-field { font-size: 0.85rem; gap: 0.35rem; }
+  .gap-field input { width: 5rem; }
   .level-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.6rem; }
   .level { border: 1px solid var(--border); border-radius: 8px; padding: 0.65rem 0.8rem; display: grid; gap: 0.45rem; }
   .level:hover { border-color: var(--accent); }
@@ -365,11 +400,5 @@
   .top-view .crate { stroke: rgb(0 0 0 / 0.45); stroke-width: 4; }
   .top-view .edge { stroke: var(--muted); stroke-width: 6; stroke-dasharray: 20 12; }
   .top-view .code { font: 700 70px system-ui, sans-serif; text-anchor: middle; dominant-baseline: middle; fill: #111; }
-  .table-wrap { overflow-x: auto; }
-  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-  th, td { padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
-  th { font-weight: 600; font-size: 0.8rem; color: var(--muted); }
-  tfoot td { font-weight: 600; border-bottom: none; }
-  .r { text-align: right; }
   .scene-loading { height: min(62vh, 560px); min-height: 320px; background: var(--scene-bg); border-radius: 8px; }
 </style>

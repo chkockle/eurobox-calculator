@@ -43,8 +43,10 @@ describe('columnOptions', () => {
     const b = box('euro-600x400x120');
     const opts = columnOptions(space({ height: 400, maxStack: 5 }), [b], { ...S, topClearance: 30 });
     expect(opts[0].stack).toBe(3); // 3 × 120 = 360 ≤ 370
+    expect(opts[0].stackLimited).toBe(false);
     const noStack = columnOptions(space({ height: 400, maxStack: 1 }), [b], S);
     expect(noStack[0].stack).toBe(1);
+    expect(noStack[0].stackLimited).toBe(true);
   });
 
   it('puts rows behind each other only when allowed', () => {
@@ -63,6 +65,17 @@ describe('columnOptions', () => {
     // Lid of 15 + 320 exceeds 330
     expect(columnOptions(space({ height: 330 }), [b], { ...S, lids: true })).toHaveLength(0);
     expect(columnOptions(space({ height: 330 }), [box('alc-600x400x310')], { ...S, lids: true })).toHaveLength(1);
+  });
+
+  it('fills an open top without height limit with the tallest box, stacked up to the limit', () => {
+    const boxes = [box('euro-600x400x120'), box('euro-600x400x320')];
+    const open = space({ height: Infinity, needsClearance: false });
+    const single = columnOptions(open, boxes, S);
+    expect(single.every((o) => o.stack === 1)).toBe(true);
+    const r = solveLevel(open, boxes, S);
+    expect(r.candidates[0].columns.every((c) => c.boxId === 'euro-600x400x320')).toBe(true);
+    const stacked = columnOptions({ ...open, maxStack: 3 }, boxes, S);
+    expect(stacked.every((o) => o.stack === 3)).toBe(true);
   });
 });
 
@@ -165,9 +178,9 @@ describe('solveShelf on the OBI preset', () => {
 });
 
 describe('persistence', () => {
-  it('round-trips through a share link', () => {
+  it('round-trips through a share link, including an unlimited open top', () => {
     const p = defaultProject();
-    p.shelves[0].levels.push(makeLevel(250, true));
+    p.shelves[0].levels.push(makeLevel(null, true));
     const back = projectFromHash(shareHash(p));
     expect(back).toEqual(p);
   });

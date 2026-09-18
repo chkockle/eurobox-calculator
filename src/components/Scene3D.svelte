@@ -3,18 +3,16 @@
   import { WebGLRenderer } from 'three';
   import { onMount } from 'svelte';
   import { t } from '../lib/i18n/index.svelte';
-  import type { BoxType, Shelf } from '../lib/model/types';
-  import type { PlacedBox } from '../lib/solver/geometry';
-  import ShelfScene from './ShelfScene.svelte';
+  import type { BoxType } from '../lib/model/types';
+  import ShelfScene, { type SceneShelf } from './ShelfScene.svelte';
 
   interface Props {
-    shelf: Shelf;
-    placed: PlacedBox[];
+    items: SceneShelf[];
     byId: Map<string, BoxType>;
     codes: Map<string, string>;
-    highlight: number | null;
+    highlight: { shelfId: string; level: number } | null;
   }
-  let { shelf, placed, byId, codes, highlight }: Props = $props();
+  let { items, byId, codes, highlight }: Props = $props();
 
   let mode = $state<'front' | '3d'>('front');
   let resetKey = $state(0);
@@ -61,7 +59,7 @@
 >
   {#key `${mode}-${resetKey}`}
     <Canvas {createRenderer}>
-      <ShelfScene {shelf} {placed} {byId} {codes} {mode} {highlight} {zoomEnabled} />
+      <ShelfScene {items} {byId} {codes} {mode} {highlight} {zoomEnabled} />
     </Canvas>
   {/key}
 </div>

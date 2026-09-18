@@ -11,6 +11,7 @@ export const DEFAULT_SETTINGS: Settings = {
   minSupport: 2 / 3,
   kgPerLitre: null,
   currency: '€',
+  shelfGap: 20,
 };
 
 export function defaultProject(): Project {

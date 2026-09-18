@@ -13,10 +13,12 @@ const str = (v: unknown, fallback: string): string => (typeof v === 'string' ? v
 
 function parseLevel(v: unknown): Level {
   const o = isObj(v) ? v : {};
+  const openTop = o.openTop === true;
   return {
     id: str(o.id, uid()),
-    clearHeight: Math.max(0, num(o.clearHeight, 300)),
-    openTop: o.openTop === true,
+    // Only an open top may be unlimited (null).
+    clearHeight: openTop && o.clearHeight == null ? null : Math.max(0, num(o.clearHeight, 300)),
+    openTop,
     enabled: o.enabled !== false,
     maxStack: Math.max(1, Math.round(num(o.maxStack, 1))),
     allowBehind: o.allowBehind === true,
@@ -100,6 +102,7 @@ export function parseProject(input: unknown): Project {
       minSupport: Math.min(1, Math.max(0.5, num(s.minSupport, DEFAULT_SETTINGS.minSupport))),
       kgPerLitre: numOrNull(s.kgPerLitre),
       currency: str(s.currency, DEFAULT_SETTINGS.currency).slice(0, 5),
+      shelfGap: Math.max(0, num(s.shelfGap, DEFAULT_SETTINGS.shelfGap)),
     },
     objective,
     selection,

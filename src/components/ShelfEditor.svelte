@@ -53,12 +53,28 @@
     app.activeShelf = Math.max(0, app.activeShelf - 1);
   }
 
+  const hasOpenTop = $derived(!!shelf?.levels.at(-1)?.openTop);
+
   function addLevel() {
     if (!shelf) return;
-    const top = shelf.levels.at(-1);
-    // A new level goes on top: if the current top is open, it becomes a normal level.
-    if (top?.openTop) top.openTop = false;
-    shelf.levels.push(makeLevel(top?.clearHeight ?? 350));
+    // A new board level goes below the open top (if any), which always stays the highest level.
+    const boards = shelf.levels.filter((l) => !l.openTop);
+    const level = makeLevel(boards.at(-1)?.clearHeight ?? 350);
+    if (hasOpenTop) shelf.levels.splice(shelf.levels.length - 1, 0, level);
+    else shelf.levels.push(level);
+  }
+
+  function addTop() {
+    if (shelf && !hasOpenTop) shelf.levels.push(makeLevel(null, true));
+  }
+
+  function moveShelf(dir: -1 | 1) {
+    const i = app.activeShelf;
+    const j = i + dir;
+    if (j < 0 || j >= shelves.length) return;
+    const [s] = shelves.splice(i, 1);
+    shelves.splice(j, 0, s);
+    app.activeShelf = j;
   }
 
   function removeLevel(i: number) {
@@ -127,7 +143,7 @@
       </div>
       <label class="row"><input type="checkbox" bind:checked={quick.useTop} /> {t('shelf.useTop')}</label>
       {#if quick.useTop}
-        <NumField label={t('shelf.topSpace')} unit="mm" bind:value={quick.topSpace} />
+        <NumField label={t('shelf.topSpace')} unit="mm" nullable placeholder={t('levels.noLimit')} hint={t('shelf.topSpaceHint')} bind:value={quick.topSpace} />
       {/if}
       <div><button class="primary" onclick={apply}>{t('shelf.apply')}</button></div>
     </div>
@@ -161,7 +177,10 @@
         <p class="muted">{t('levels.none')}</p>
       {/if}
 
-      <button class="add-level" onclick={addLevel}>+ {t('levels.add')}</button>
+      <div class="row">
+        <button onclick={addLevel}>+ {t('levels.add')}</button>
+        {#if !hasOpenTop}<button onclick={addTop}>+ {t('levels.addTop')}</button>{/if}
+      </div>
 
       <ol class="levels">
         {#each levelOrder as i (shelf.levels[i].id)}
@@ -176,7 +195,11 @@
               <button class="icon" title={t('levels.remove')} aria-label={t('levels.remove')} onclick={() => removeLevel(i)}>✕</button>
             </div>
             <div class="level-fields">
-              <NumField label={t('levels.clearHeight')} unit="mm" bind:value={level.clearHeight} />
+              {#if level.openTop}
+                <NumField label={t('levels.clearHeight')} unit="mm" nullable placeholder={t('levels.noLimit')} hint={t('levels.topHint')} bind:value={level.clearHeight} />
+              {:else}
+                <NumField label={t('levels.clearHeight')} unit="mm" bind:value={() => level.clearHeight ?? 0, (v) => (level.clearHeight = v ?? 0)} />
+              {/if}
               <NumField label={t('levels.stack')} bind:value={level.maxStack} min={1} max={10} hint={t('levels.stackHint')} />
               <NumField label={t('levels.maxLoad')} unit="kg" nullable bind:value={level.maxLoadKg} />
               <label class="row behind" title={t('levels.behindHint')}>
@@ -217,7 +240,11 @@
 
     <div class="row">
       <button onclick={duplicateShelf}>{t('shelf.duplicate')}</button>
-      {#if shelves.length > 1}<button onclick={removeShelf}>{t('shelf.remove')}</button>{/if}
+      {#if shelves.length > 1}
+        <button onclick={() => moveShelf(-1)} disabled={app.activeShelf === 0}>← {t('shelf.moveLeft')}</button>
+        <button onclick={() => moveShelf(1)} disabled={app.activeShelf === shelves.length - 1}>{t('shelf.moveRight')} →</button>
+        <button onclick={removeShelf}>{t('shelf.remove')}</button>
+      {/if}
     </div>
   {/if}
 </section>
@@ -239,7 +266,6 @@
   .picker summary { font-weight: 500; font-size: 0.85rem; }
   .picker .chosen { color: var(--accent); font-weight: 600; }
   .picker-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 0.2rem 0.75rem; margin: 0.4rem 0; font-size: 0.85rem; }
-  .add-level { align-self: flex-start; }
   .quick { gap: 0.3rem; margin-top: 0.4rem; }
   .chip { font-size: 0.78rem; padding: 0.15rem 0.55rem; border-radius: 999px; }
 </style>

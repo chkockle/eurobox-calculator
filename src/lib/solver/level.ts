@@ -31,6 +31,8 @@ export interface ColumnOption {
   spareDepth: number;
   /** Free height above the stack (before top clearance). */
   spareHeight: number;
+  /** The level's stack limit, not its height, stops another box on top. */
+  stackLimited: boolean;
 }
 
 export interface LevelCandidate {
@@ -60,7 +62,7 @@ export interface LevelResult {
 export interface LevelSpace {
   width: number;
   depth: number;
-  /** Clear height available for boxes. */
+  /** Clear height available for boxes (Infinity on an open top without limit). */
   height: number;
   frontOverhang: number;
   maxStack: number;
@@ -73,7 +75,7 @@ export function levelSpace(shelf: Shelf, level: Level): LevelSpace {
   return {
     width: shelf.clearWidth,
     depth: shelf.clearDepth,
-    height: level.clearHeight,
+    height: level.clearHeight ?? Infinity,
     frontOverhang: shelf.frontOverhang,
     maxStack: Math.max(1, Math.floor(level.maxStack)),
     allowBehind: level.allowBehind,
@@ -94,7 +96,8 @@ export function columnOptions(space: LevelSpace, boxes: BoxType[], s: Settings):
   for (const b of boxes) {
     const lid = s.lids && !b.lidded ? Math.max(0, s.lidHeight) : 0;
     const h = b.height + lid + tol;
-    const stack = Math.min(space.maxStack, Math.floor((usableH + EPS) / h));
+    const heightFits = Math.floor((usableH + EPS) / h);
+    const stack = Math.min(space.maxStack, heightFits);
     if (stack < 1) continue;
 
     const orientations: [number, number, boolean][] = [[b.length, b.width, false]];
@@ -125,6 +128,7 @@ export function columnOptions(space: LevelSpace, boxes: BoxType[], s: Settings):
         overhang: Math.max(0, used - space.depth),
         spareDepth: maxDepth - used,
         spareHeight: usableH - stack * h,
+        stackLimited: heightFits > stack,
       });
     }
   }

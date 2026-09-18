@@ -17,7 +17,8 @@ export interface QuickShelfInput {
   bottomOffset: number;
   /** Use the space on top of the highest board. */
   useTop: boolean;
-  topSpace: number;
+  /** Usable height on top; null = no limit. */
+  topSpace: number | null;
 }
 
 export interface ShelfPreset {
@@ -37,7 +38,7 @@ export const PRESETS: ShelfPreset[] = [
       name: 'OBI XL 180×160×60',
       outerHeight: 1800, outerWidth: 1600, outerDepth: 600,
       boards: 4, bays: 1, boardThickness: 30, uprightSize: 40, bottomOffset: 80,
-      useTop: false, topSpace: 400,
+      useTop: false, topSpace: null,
     },
   },
   {
@@ -47,7 +48,7 @@ export const PRESETS: ShelfPreset[] = [
       name: 'Steckregal 180×90×40',
       outerHeight: 1800, outerWidth: 900, outerDepth: 400,
       boards: 5, bays: 1, boardThickness: 30, uprightSize: 35, bottomOffset: 80,
-      useTop: false, topSpace: 400,
+      useTop: false, topSpace: null,
     },
   },
   {
@@ -57,7 +58,7 @@ export const PRESETS: ShelfPreset[] = [
       name: 'Steckregal 180×120×50',
       outerHeight: 1800, outerWidth: 1200, outerDepth: 500,
       boards: 5, bays: 1, boardThickness: 30, uprightSize: 35, bottomOffset: 80,
-      useTop: false, topSpace: 400,
+      useTop: false, topSpace: null,
     },
   },
   {
@@ -67,12 +68,12 @@ export const PRESETS: ShelfPreset[] = [
       name: 'Steckregal 200×100×60',
       outerHeight: 2000, outerWidth: 1000, outerDepth: 600,
       boards: 5, bays: 1, boardThickness: 30, uprightSize: 40, bottomOffset: 80,
-      useTop: false, topSpace: 400,
+      useTop: false, topSpace: null,
     },
   },
 ];
 
-export function makeLevel(clearHeight: number, openTop = false): Level {
+export function makeLevel(clearHeight: number | null, openTop = false): Level {
   return {
     id: uid(),
     clearHeight,
@@ -95,7 +96,7 @@ export function shelfFromQuick(q: QuickShelfInput): Shelf {
     const clear = Math.max(0, Math.round(pitch - q.boardThickness));
     for (let i = 0; i < boards - 1; i++) levels.push(makeLevel(clear));
   }
-  if (q.useTop || boards < 2) levels.push(makeLevel(Math.max(0, q.topSpace), true));
+  if (q.useTop || boards < 2) levels.push(makeLevel(q.topSpace == null ? null : Math.max(0, q.topSpace), true));
 
   return {
     id: uid(),
@@ -118,7 +119,7 @@ export function levelBaseHeights(shelf: Shelf): number[] {
   let y = shelf.bottomOffset;
   for (const l of shelf.levels) {
     out.push(y);
-    y += l.clearHeight + shelf.boardThickness;
+    y += (l.clearHeight ?? 0) + shelf.boardThickness;
   }
   return out;
 }
@@ -128,6 +129,6 @@ export function shelfTotalHeight(shelf: Shelf): number {
   const bases = levelBaseHeights(shelf);
   if (!shelf.levels.length) return shelf.bottomOffset;
   const last = shelf.levels.length - 1;
-  const top = bases[last] + shelf.levels[last].clearHeight;
+  const top = bases[last] + (shelf.levels[last].clearHeight ?? 0);
   return shelf.levels[last].openTop ? bases[last] : top + shelf.boardThickness;
 }
