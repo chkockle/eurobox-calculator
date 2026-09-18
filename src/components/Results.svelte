@@ -72,7 +72,9 @@
     const enabled = new Set(app.project.enabledBoxIds);
     const map = new Map<string, BoxType[]>();
     for (const b of DATASET_BOXES.filter((x) => x.family === 'euro')) map.set(footprintKey(b), [...(map.get(footprintKey(b)) ?? []), b]);
-    return [...map].filter(([, list]) => list.every((b) => !enabled.has(b.id)));
+    return [...map]
+      .filter(([, list]) => list.every((b) => !enabled.has(b.id)))
+      .sort(([, a], [, b]) => a[0].length * a[0].width - b[0].length * b[0].width);
   });
   const fpLabel = (k: string) => k.split('×').map((mm) => Number(mm) / 10).join('×');
   const sizeLabel = (key: string) => boxName(byId.get(key.slice(4)));

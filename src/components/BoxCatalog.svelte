@@ -15,7 +15,8 @@
       const k = footprintKey(b);
       map.set(k, [...(map.get(k) ?? []), b]);
     }
-    return [...map];
+    // Smallest footprint first: 30×20, 40×30, 60×40, 80×60.
+    return [...map].sort(([, a], [, b]) => a[0].length * a[0].width - b[0].length * b[0].width);
   }
 
   const enabled = $derived(new Set(app.project.enabledBoxIds));
