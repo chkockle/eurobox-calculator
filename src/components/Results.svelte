@@ -5,7 +5,7 @@
   import type { Objective, Project, Shelf, ShelfSelection } from '../lib/model/types';
   import { effectivePlan, rankPlans, solveShelf, TIGHT_MM, type Plan } from '../lib/solver/plans';
   import type { LevelCandidate } from '../lib/solver/level';
-  import { placeBoxes, shelfOuterWidth } from '../lib/solver/geometry';
+  import { placeBoxes, shelfOffsets } from '../lib/solver/geometry';
   import { boxColor, boxName, candidateSummary, planLabel } from '../lib/display';
   import type { SceneShelf } from './ShelfScene.svelte';
   import ShoppingList, { type ShoppingTotals } from './ShoppingList.svelte';
@@ -51,8 +51,7 @@
   const customised = $derived(!!selection && Object.keys(selection.overrides).length > 0);
   const multi = $derived(computed.length > 1);
 
-  let scopeChoice = $state<'shelf' | 'all'>('shelf');
-  const scope = $derived(multi ? scopeChoice : 'shelf');
+  const scope = $derived(multi ? app.scope : 'shelf');
 
   const shown = $derived.by(() => {
     const top = ranked.slice(0, 6);
@@ -105,12 +104,8 @@
 
   const sceneItems = $derived.by((): SceneShelf[] => {
     const list = scope === 'all' ? computed : current ? [current] : [];
-    let x = 0;
-    return list.map((c) => {
-      const item = { id: c.shelf.id, shelf: c.shelf, placed: c.plan ? placeBoxes(c.shelf, c.plan, settings) : [], x0: x };
-      x += shelfOuterWidth(c.shelf) + Math.max(0, settings.shelfGap);
-      return item;
-    });
+    const x0 = shelfOffsets(list.map((c) => c.shelf), settings.shelfGap);
+    return list.map((c, i) => ({ id: c.shelf.id, shelf: c.shelf, placed: c.plan ? placeBoxes(c.shelf, c.plan, settings) : [], x0: x0[i] }));
   });
 
   let hoveredLevel = $state<number | null>(null);
@@ -246,8 +241,8 @@
       {#if multi}
         <div class="row no-print">
           <div class="seg" role="group" aria-label={t('view.title')}>
-            <button class:on={scope === 'shelf'} aria-pressed={scope === 'shelf'} onclick={() => (scopeChoice = 'shelf')}>{t('scope.shelf')}</button>
-            <button class:on={scope === 'all'} aria-pressed={scope === 'all'} onclick={() => (scopeChoice = 'all')}>{t('scope.all', { n: computed.length })}</button>
+            <button class:on={scope === 'shelf'} aria-pressed={scope === 'shelf'} onclick={() => (app.scope = 'shelf')}>{t('scope.shelf')}</button>
+            <button class:on={scope === 'all'} aria-pressed={scope === 'all'} onclick={() => (app.scope = 'all')}>{t('scope.all', { n: computed.length })}</button>
           </div>
           {#if scope === 'all'}
             <label class="row gap-field">

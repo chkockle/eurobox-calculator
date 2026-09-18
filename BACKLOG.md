@@ -16,9 +16,9 @@ Ideas and follow-ups that are deliberately not in v1, roughly in priority order.
   litre (with per m³ alongside). v1 already ranks layouts by price per litre for one price list;
   this adds several price lists / shops side by side. One comparison = one currency, no FX.
 
-- **Sections within a level** — split one board into sections (e.g. left 60 cm: small boxes for
-  screws, right: large boxes) with their own box lists. Today this can be approximated with
-  bays or a per-level box list.
+- **Sections within one board** — split a single board (without a middle upright) into sections,
+  e.g. left 60 cm small boxes for screws, right large boxes. Bays can already be configured
+  separately ("Configure bays separately"); this would add the same inside one bay.
 
 - **Inventory: boxes I already own** — quantities per box type; plans use owned boxes first and the
   shopping list only shows what is missing.

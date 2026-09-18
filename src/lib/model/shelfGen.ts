@@ -110,6 +110,8 @@ export function shelfFromQuick(q: QuickShelfInput): Shelf {
     uprightSize: q.uprightSize,
     bottomOffset: q.bottomOffset,
     levels,
+    boxIds: null,
+    joined: false,
   };
 }
 

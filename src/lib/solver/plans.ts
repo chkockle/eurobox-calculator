@@ -53,7 +53,7 @@ export function solveShelf(shelf: Shelf, boxes: BoxType[], project: Pick<Project
   const levels = shelf.levels.map((l) => {
     if (!l.enabled) return null;
     const space = levelSpace(shelf, l);
-    const allowed = levelBoxes(l, boxes);
+    const allowed = levelBoxes(l, shelfBoxes(shelf, boxes));
     const k = cacheKey(space) + allowed.map((b) => b.id).join(',');
     if (!cache.has(k)) cache.set(k, solveLevel(space, allowed, project.settings));
     return cache.get(k)!;
@@ -73,7 +73,7 @@ export function solveShelf(shelf: Shelf, boxes: BoxType[], project: Pick<Project
     // A level with its own box list keeps its best fill in every plan, instead of going empty
     // when the plan's single box type is not allowed there.
     const picks = levels.map((r, i) =>
-      r ? pickFor(key, r, project.prices) ?? (shelf.levels[i].boxIds ? pickFor('maxVolume', r, project.prices) : null) : null,
+      r ? pickFor(key, r, project.prices) ?? (shelf.levels[i].boxIds || shelf.boxIds ? pickFor('maxVolume', r, project.prices) : null) : null,
     );
     const sig = picks.map((c) => c?.sig ?? '-').join('/');
     if (seen.has(sig) || picks.every((c) => !c)) continue;
@@ -81,6 +81,13 @@ export function solveShelf(shelf: Shelf, boxes: BoxType[], project: Pick<Project
     plans.push(buildPlan(key, shelf, picks, project.prices, project.settings));
   }
   return { levels, plans };
+}
+
+/** Boxes allowed on a shelf: its own list if set, otherwise every selected box. */
+export function shelfBoxes(shelf: Shelf, boxes: BoxType[]): BoxType[] {
+  if (!shelf.boxIds) return boxes;
+  const allowed = new Set(shelf.boxIds);
+  return boxes.filter((b) => allowed.has(b.id));
 }
 
 /** Boxes allowed on a level: its own list if set, otherwise every selected box. */

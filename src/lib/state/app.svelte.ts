@@ -16,6 +16,8 @@ const init = initial();
 export const app = $state({
   project: init.project,
   activeShelf: 0,
+  /** Results show the active shelf only, or all shelves side by side. */
+  scope: (init.project.shelves.some((s) => s.joined) ? 'all' : 'shelf') as 'shelf' | 'all',
   toast: init.fromLink ? 'action.sharedLoaded' : '',
 });
 

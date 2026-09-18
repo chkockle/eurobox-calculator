@@ -2,10 +2,10 @@
   import { t } from '../lib/i18n/index.svelte';
   import { app } from '../lib/state/app.svelte';
   import { PRESETS, makeLevel, shelfFromQuick, uid, type QuickShelfInput } from '../lib/model/shelfGen';
-  import { allBoxes, footprintKey } from '../lib/model/catalog';
-  import { boxName } from '../lib/display';
+  import { allBoxes } from '../lib/model/catalog';
   import NumField from './NumField.svelte';
   import MeasureGuide from './MeasureGuide.svelte';
+  import BoxFilter from './BoxFilter.svelte';
 
   const shelves = $derived(app.project.shelves);
   const shelf = $derived(shelves[app.activeShelf]);
@@ -68,6 +68,23 @@
     if (shelf && !hasOpenTop) shelf.levels.push(makeLevel(null, true));
   }
 
+  /** Turn identical bays into separate, attached shelves so each can be set up on its own. */
+  function splitBays() {
+    if (!shelf || shelf.bays < 2) return;
+    const s = $state.snapshot(shelf);
+    const base = s.name || t('shelf.defaultName', { n: app.activeShelf + 1 });
+    const parts = Array.from({ length: s.bays }, (_, b) => ({
+      ...s,
+      id: b === 0 ? s.id : uid(),
+      name: `${base} · ${t('shelf.bayN', { n: b + 1 })}`,
+      bays: 1,
+      joined: b === 0 ? s.joined : true,
+      levels: s.levels.map((l) => ({ ...l, id: b === 0 ? l.id : uid() })),
+    }));
+    shelves.splice(app.activeShelf, 1, ...parts);
+    app.scope = 'all';
+  }
+
   function moveShelf(dir: -1 | 1) {
     const i = app.activeShelf;
     const j = i + dir;
@@ -82,22 +99,7 @@
     shelf.levels.splice(i, 1);
   }
 
-  function toggleLevelBox(i: number, id: string, on: boolean) {
-    const level = shelf!.levels[i];
-    const current = level.boxIds ?? enabledBoxes.map((b) => b.id);
-    const next = on ? [...new Set([...current, id])] : current.filter((x) => x !== id);
-    level.boxIds = next;
-  }
-
-  const footprints = $derived.by(() => {
-    const map = new Map<string, string[]>();
-    for (const b of enabledBoxes) {
-      const k = footprintKey(b);
-      map.set(k, [...(map.get(k) ?? []), b.id]);
-    }
-    return [...map];
-  });
-  const fpLabel = (k: string) => k.split('×').map((mm) => Number(mm) / 10).join('×');
+  const shelfAllowed = $derived(shelf?.boxIds ? enabledBoxes.filter((b) => shelf.boxIds!.includes(b.id)) : enabledBoxes);
 
   const levelOrder = $derived(shelf ? shelf.levels.map((_, i) => i).reverse() : []);
 </script>
@@ -161,10 +163,20 @@
         </label>
         <NumField label={t('shelf.clearWidth')} unit="mm" bind:value={shelf.clearWidth} hint={t('shelf.clearWidthHint')} />
         <NumField label={t('shelf.clearDepth')} unit="mm" bind:value={shelf.clearDepth} />
-        <NumField label={t('shelf.bays')} bind:value={shelf.bays} min={1} />
+        <NumField label={t('shelf.bays')} bind:value={shelf.bays} min={1} hint={shelf.bays > 1 ? t('shelf.baysSame') : ''} />
         <NumField label={t('shelf.frontOverhang')} unit="mm" bind:value={shelf.frontOverhang} hint={t('shelf.frontOverhangHint')} />
         <NumField label={t('shelf.maxTotalLoad')} unit="kg" nullable bind:value={shelf.maxTotalLoadKg} hint={t('shelf.loadHint')} />
       </div>
+      <BoxFilter bind:value={shelf.boxIds} boxes={enabledBoxes} label={t('shelf.boxes')} hint={t('shelf.boxesHint')} />
+      {#if shelf.bays > 1}
+        <div class="split">
+          <button onclick={splitBays}>{t('shelf.split')}</button>
+          <small>{t('shelf.splitHint', { n: shelf.bays })}</small>
+        </div>
+      {/if}
+      {#if app.activeShelf > 0}
+        <label class="row"><input type="checkbox" bind:checked={shelf.joined} /> {t('shelf.joined')}</label>
+      {/if}
     </div>
 
     <div class="stack">
@@ -207,32 +219,7 @@
                 <span>{t('levels.behind')}<br /><small>{t('levels.behindHint')}</small></span>
               </label>
             </div>
-            <details class="picker">
-              <summary>
-                {t('levels.boxes')}:
-                <span class:chosen={level.boxIds}>{level.boxIds ? t('levels.boxesSome', { n: level.boxIds.filter((id) => enabledBoxes.some((b) => b.id === id)).length }) : t('levels.boxesAll')}</span>
-              </summary>
-              <small>{t('levels.boxesHint')}</small>
-              <div class="row quick">
-                {#each footprints as [fp, ids] (fp)}
-                  <button class="chip" onclick={() => (level.boxIds = [...ids])}>{t('levels.onlyFp', { fp: fpLabel(fp) })}</button>
-                {/each}
-                <button class="chip" onclick={() => (level.boxIds = [])}>{t('boxes.none')}</button>
-              </div>
-              <div class="picker-list">
-                {#each enabledBoxes as b (b.id)}
-                  <label class="row">
-                    <input
-                      type="checkbox"
-                      checked={!level.boxIds || level.boxIds.includes(b.id)}
-                      onchange={(e) => toggleLevelBox(i, b.id, e.currentTarget.checked)}
-                    />
-                    {boxName(b)}
-                  </label>
-                {/each}
-              </div>
-              {#if level.boxIds}<button class="link" onclick={() => (level.boxIds = null)}>{t('levels.boxesReset')}</button>{/if}
-            </details>
+            <BoxFilter bind:value={level.boxIds} boxes={shelfAllowed} label={t('levels.boxes')} hint={t('levels.boxesHint')} />
           </li>
         {/each}
       </ol>
@@ -263,9 +250,5 @@
   .level-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr)); gap: 0.5rem 0.75rem; align-items: start; }
   .behind { align-items: flex-start; font-size: 0.85rem; font-weight: 500; }
   .behind small { font-weight: 400; font-size: 0.75rem; }
-  .picker summary { font-weight: 500; font-size: 0.85rem; }
-  .picker .chosen { color: var(--accent); font-weight: 600; }
-  .picker-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 0.2rem 0.75rem; margin: 0.4rem 0; font-size: 0.85rem; }
-  .quick { gap: 0.3rem; margin-top: 0.4rem; }
-  .chip { font-size: 0.78rem; padding: 0.15rem 0.55rem; border-radius: 999px; }
+  .split { display: grid; gap: 0.25rem; justify-items: start; }
 </style>

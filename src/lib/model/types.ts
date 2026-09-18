@@ -60,6 +60,10 @@ export interface Shelf {
   bottomOffset: number;
   /** Levels from bottom to top. */
   levels: Level[];
+  /** Only these boxes on this shelf (all levels). null = all selected boxes. Combined with each level's list. */
+  boxIds: string[] | null;
+  /** Built onto the previous shelf in the list, sharing its upright (e.g. separately configured bays). */
+  joined: boolean;
 }
 
 export interface Settings {

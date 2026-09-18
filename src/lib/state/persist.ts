@@ -41,6 +41,8 @@ function parseShelf(v: unknown): Shelf {
     uprightSize: Math.max(0, num(o.uprightSize, 35)),
     bottomOffset: Math.max(0, num(o.bottomOffset, 80)),
     levels: Array.isArray(o.levels) ? o.levels.map(parseLevel) : [],
+    boxIds: Array.isArray(o.boxIds) ? o.boxIds.filter((x): x is string => typeof x === 'string') : null,
+    joined: o.joined === true,
   };
 }
 

@@ -33,6 +33,23 @@ export function shelfOuterWidth(shelf: Shelf): number {
   return bayLeft(shelf, shelf.bays);
 }
 
+/**
+ * Left edge (mm) of each shelf when shown side by side: attached shelves share the upright
+ * with their left neighbour, others keep `gap` between them.
+ */
+export function shelfOffsets(shelves: Shelf[], gap: number): number[] {
+  const out: number[] = [];
+  let x = 0;
+  shelves.forEach((s, i) => {
+    if (i > 0) {
+      const prev = shelves[i - 1];
+      x += shelfOuterWidth(prev) + (s.joined ? -Math.min(prev.uprightSize, s.uprightSize) : Math.max(0, gap));
+    }
+    out.push(x);
+  });
+  return out;
+}
+
 export function placeBoxes(shelf: Shelf, plan: Plan, settings: Settings): PlacedBox[] {
   const out: PlacedBox[] = [];
   const bases = levelBaseHeights(shelf);

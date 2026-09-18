@@ -4,7 +4,7 @@ import { DEFAULT_SETTINGS, defaultProject } from '../model/defaults';
 import { PRESETS, makeLevel, shelfFromQuick } from '../model/shelfGen';
 import type { BoxType, Settings, Shelf } from '../model/types';
 import { parseProject, projectFromHash, shareHash } from '../state/persist';
-import { placeBoxes } from './geometry';
+import { placeBoxes, shelfOffsets, shelfOuterWidth } from './geometry';
 import { columnOptions, fillWidth, levelSpace, solveLevel, type LevelSpace } from './level';
 import { effectivePlan, rankPlans, solveShelf } from './plans';
 
@@ -187,12 +187,31 @@ describe('solveShelf on the OBI preset', () => {
     expect(only60.levels[2].candidate?.boxIds[0]).toMatch(/^euro-400x300/);
   });
 
+  it('combines the shelf box list with level lists', () => {
+    const only40 = boxes.filter((b) => b.length === 400).map((b) => b.id);
+    const s2 = { ...shelf, boxIds: only40 };
+    const sol = solveShelf(s2, boxes, project);
+    for (const r of sol.levels) expect(r!.candidates.every((c) => c.boxIds.every((id) => only40.includes(id)))).toBe(true);
+    const s3 = { ...s2, levels: s2.levels.map((l, i) => (i === 0 ? { ...l, boxIds: ['euro-600x400x320'] } : l)) };
+    expect(solveShelf(s3, boxes, project).levels[0]!.candidates).toHaveLength(0);
+  });
+
   it('ranks by price per litre when prices are given', () => {
     const prices = { 'euro-600x400x320': 10, 'euro-400x300x320': 100 };
     const sol = solveShelf(shelf, boxes, { ...project, prices });
     const ranked = rankPlans(sol.plans, 'value');
     expect(ranked[0].costPerLitre).not.toBeNull();
     expect(ranked[0].boxes.every((b) => b.price != null)).toBe(true);
+  });
+});
+
+describe('shelfOffsets', () => {
+  it('shares the upright for attached shelves and keeps the gap otherwise', () => {
+    const a = shelfFromQuick({ ...PRESETS[1].input }); // 1 bay, 35 mm uprights
+    const b = { ...a, joined: true };
+    const c = { ...a, joined: false };
+    const w = shelfOuterWidth(a);
+    expect(shelfOffsets([a, b, c], 20)).toEqual([0, w - 35, 2 * w - 35 + 20]);
   });
 });
 
